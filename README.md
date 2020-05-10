@@ -9,6 +9,8 @@
 
 Official Repository for the hydrOS, the operating system behind HydroSoil: Smart Irrigation Solutions.
 
+# THIS REPOSITORY DOES NOT CONTAIN SOURCE CODE YET, IT IS FOR BUG TRACKING AND PROGRESS UPDATES
+
 # Installing, running and building hydrOS
 The latest version of hydrOS comes standard with all official HydroSoil products, including HydroCore and HydroUnit products. The operating system can also be built from source code.
 To build from source, install all dependencies for what you need as listed below.
