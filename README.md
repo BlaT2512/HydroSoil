@@ -56,7 +56,7 @@ Reboot the device.
 # Changelog & planned upcoming changes
 ### v0.1 [LATEST PRE-RELEASE]
 Initial release of hydrOS
-Includes source code for HydroUnit Standard.
+Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
 #### New Features:
 - Calendar page showing basic weather forecast for next 6 days and number of routines scheduled for each day
 - Weather page showing detailed weather forecast for the current day and next 5 days
@@ -65,6 +65,7 @@ Includes source code for HydroUnit Standard.
 - Basic layout of most settings pages and the main settings page
 - Header bar showing current local time in top-left corner and zone/WiFi status in top-right corner
 - Menu bar allowing easy navigation between pages
+- Automatic Updates - Detection of new release of hydrOS from Github and downloading required files and installing them
 #### Known Issues:
 - Settings pages currently do not work, the UI has only been created at the moment
 - Multiple fatal errors occur when WiFi network is not connected
@@ -73,5 +74,5 @@ Includes source code for HydroUnit Standard.
 
 ### v0.2 [PLANNED]
 #### Planned Features:
-- Automatic Updates - Detection of new release of hydrOS from Github and downloading required files and installing them
 - Updates for HydroUnit's over-air when detected
+- Get list of available WiFi networks and allow user to connect to them
