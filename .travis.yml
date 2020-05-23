@@ -12,6 +12,6 @@ install:
   - pip install -r requirements.txt
 # command to run tests
 script:
-  - HydroSoil/main.py
-  - HydroSoil/mqtt.py
-  - HydroLauncher/launcher.py
+  - python3 HydroSoil/main.py
+  - python3 HydroSoil/mqtt.py
+  - python3 HydroLauncher/launcher.py
