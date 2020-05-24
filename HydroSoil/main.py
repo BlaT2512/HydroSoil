@@ -230,7 +230,6 @@ class SoilSystemMain:
         self.builder.get_object('Release Notes').set_text(latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
   
   def on_update_action(self, btn):
-    global secondroutine, weatherroutine
     # Called when install/download update button is pressed
     btn.set_sensitive(False)
     if btn.get_label() == "Download Update":
@@ -250,7 +249,7 @@ class SoilSystemMain:
       self.builder.get_object('Update Action').set_label("Install Update & Restart")
       self.builder.get_object('Update Action').set_sensitive(True)
     else:
-      # Install new available updateuniqueID = file.readlines()
+      # Install new available
       latestData = requests.get('https://api.github.com/repos/BlaT2512/hydrOS/releases/latest').json()
       latestVersion = latestData['tag_name']
       latestNotes = latestData['body'].split('\r\n')
@@ -261,8 +260,6 @@ class SoilSystemMain:
       with open('/home/pi/HydroSoilNew/newupdate', 'w') as file:
         file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
       # Prepare for hydrOS to be terminated
-      Glib.source_remove(secondroutine)
-      Glib.source_remove(weatherroutine)
       # Communicate with HydroLauncher and make it install update
       with open('/home/pi/HydroLauncher/updatenow', 'w') as file:
         file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
@@ -1260,7 +1257,7 @@ calweekstart=
       i += 1
 
   def __init__(self):
-    global dateToday, secondroutine, weatherroutine
+    global dateToday
     # This is the first function called, when the code is started
     # Set the Glade GUI file being used
     self.gladefile = "HydroSoil.glade"
@@ -1386,8 +1383,8 @@ calweekstart=
     # Update the zones page (disable controls for disabled modes)
     self.update_zone_controls()
     # Set timed interupts for clock & wifi status
-    secondroutine = GLib.timeout_add(1000, self.second_routine) # 1 second
-    weatherroutine = GLib.timeout_add(1800000, self.forecast) # 30 minutes
+    self.secondroutine = GLib.timeout_add(1000, self.second_routine) # 1 second
+    self.weatherroutine = GLib.timeout_add(1800000, self.forecast) # 30 minutes
     self.forecast()
     self.update_weather_page()
     self.update_zones()
