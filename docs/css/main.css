@@ -2190,15 +2190,15 @@ body.mobile-nav-active #mobile-nav-toggle {
 }
 
 .p1-gradient-bg, .primary-btn, .home-about-area .home-about-right .primary-btn, .single-unique-product:hover .primary-btn, .faq-left .card-header, .single-footer-widget .click-btn, .generic-banner {
-  background-image: -moz-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
-  background-image: -webkit-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
-  background-image: -ms-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
+  background-image: -moz-linear-gradient(45deg, #398CCB 0%, #85FF6A 100%);
+  background-image: -webkit-linear-gradient(45deg, #398CCB 0%, #85FF6A 100%);
+  background-image: -ms-linear-gradient(45deg, #398CCB 0%, #85FF6A 100%);
 }
 
 .p1-gradient-color, .footer-social a:hover i, .single-footer-widget .bb-btn {
-  background: -moz-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
-  background: -webkit-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
-  background: -ms-linear-gradient(0deg, #235ee7 0%, #4ae7fa 100%);
+  background: -moz-linear-gradient(0deg, #398CCB 0%, #85FF6A 100%);
+  background: -webkit-linear-gradient(0deg, #398CCB 0%, #85FF6A 100%);
+  background: -ms-linear-gradient(0deg, #398CCB 0%, #85FF6A 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -2258,11 +2258,11 @@ body.mobile-nav-active #mobile-nav-toggle {
 
 .primary-btn.white:hover {
   background: #fff;
-  color: #235ee7;
+  color: #398CCB;
 }
 
 .primary-btn.white:hover span {
-  color: #235ee7;
+  color: #398CCB;
 }
 
 .overlay {
@@ -2452,8 +2452,8 @@ body.mobile-nav-active #mobile-nav-toggle {
 
 .home-about-area .home-about-right .primary-btn:hover {
   background: transparent;
-  color: #235ee7;
-  border-color: #235ee7;
+  color: #398CCB;
+  border-color: #398CCB;
 }
 
 @media (max-width: 1366px) {
@@ -2579,7 +2579,7 @@ body.mobile-nav-active #mobile-nav-toggle {
 }
 
 .faq-area {
-  background: url(../img/faq-bg.jpg) center;
+  background: url(../img/faq-bg.png) center;
   background-size: cover;
 }
 
