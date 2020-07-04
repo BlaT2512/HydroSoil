@@ -10,16 +10,19 @@
 
 Official Repository for the hydrOS, the operating system behind HydroSoil: Smart Irrigation Solutions.
 
+# FYI: hydrOS is still in beta and unsuitable for stable use. Ensure you back up your data or run this in a safe environment if testing.
+
 # Installing, running and building hydrOS
 The latest version of hydrOS comes standard with all official HydroSoil products, including HydroCore and HydroUnit products. The operating system can also be built from source code.
 To build from source, install all dependencies for what you need as listed below.
 
 ## Dependencies
 ### hydrOS on HydroCore Linux package dependencies:
-- python3 (latest version)
-- libgtk-3-dev
-- mosquitto
-- mosquitto-clients
+- Python 3 (python3) [latest version]
+- Python GTK3 (libgtk-3-dev)
+- Python GTK WebKit 3
+- Mosquitto MQTT (mosquitto)
+- Mosquitto MQTT Client (mosquitto-clients)
 ### hydrOS on HydroCore Python package dependencies:
 - wireless
 - wifi
@@ -55,8 +58,35 @@ Once this is set up, change the device's hostname to `soilsystemmainunit`
 Reboot the device.
 
 # Changelog & planned upcoming changes
-### v0.1 [LATEST PRE-RELEASE]
-Initial release of hydrOS
+### v0.2 [LATEST PRE-RELEASE]
+This second major pre-release of hydrOS brings huge performance & feature updates as well as bug fixes
+Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
+### New Features:
+- Settings WiFi list showing available networks and disconnect functionality
+- Settings page for changing weather location
+- Radio buttons for changing the weather units (metric or imperial)
+- Auto update refined and fixed for an even smoother experience
+- Settings page for changing the time/date timezone and ability to sync the clock with NTP server
+- New fluent, minimal dropdown notifications to replace bulky dialogs
+- New red droplet icons for zones when critically low
+- New fluent dropdown power menu
+- Settings page to search for HydroUnit sensors and add them
+- New plant/crop selection process with fluent dropdown
+- Unregistered zones are now greyed-out on the Irrigation Zones page
+- Initial setup process refined and fixed
+- HydroSoil eManual reading capability in settings
+- HydroCore factory reset capability
+- Settings page GUI updated with sidebar
+- HydroLauncher updated and refined
+- HydroUnit Standard code heavily updated
+- Tons of other bug fixes and small refinements
+#### Known Issues:
+- The zone/sensor config settings page is currently being worked on and not completed, a sample is included showcasing what it might look like
+- Connection with the HydroSoil iOS app is not yet esatblished, but coming in the near future...
+- HydroUnit Standard blue zone indicator light does not currently work
+
+### v0.1
+Initial pre-release of hydrOS
 Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
 #### New Features:
 - Calendar page showing basic weather forecast for next 6 days and number of routines scheduled for each day
@@ -72,8 +102,3 @@ Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit S
 - Multiple fatal errors occur when WiFi network is not connected
 - HydroUnit Standard blue zone indicator light does not currently work
 - Connection with the HydroSoil iOS app is not yet established
-
-### v0.2 [PLANNED]
-#### Planned Features:
-- Updates for HydroUnit's over-air when detected
-- Get list of available WiFi networks and allow user to connect to them
