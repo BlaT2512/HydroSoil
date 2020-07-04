@@ -58,7 +58,7 @@ Once this is set up, change the device's hostname to `soilsystemmainunit`
 Reboot the device.
 
 # Changelog & planned upcoming changes
-### v0.2 [LATEST PRE-RELEASE]
+### v0.2-beta [LATEST PRE-RELEASE]
 This second major pre-release of hydrOS brings huge performance & feature updates as well as bug fixes
 Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
 ### New Features:
@@ -85,7 +85,7 @@ Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit S
 - Connection with the HydroSoil iOS app is not yet esatblished, but coming in the near future...
 - HydroUnit Standard blue zone indicator light does not currently work
 
-### v0.1
+### v0.1-alpha
 Initial pre-release of hydrOS
 Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
 #### New Features:
