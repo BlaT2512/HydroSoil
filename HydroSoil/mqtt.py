@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 import datetime
 from datetime import timedelta
 
-# Get unique ID code (main.py generates one if needed before this script is run)
+# Get unique ID code (HydroLauncher generates one if needed before this script is run)
 with open('/home/pi/HydroSoil/ID.txt') as file:
   uniqueID = file.readlines()
 uniqueID = uniqueID[0]
@@ -41,7 +41,7 @@ def on_message(client, userdata, msg):
     payloadSensor = rawPayload[:7]
     payloadData = rawPayload[9:]
     print ("Topic: " + msg.topic + "\nSoil sensor sender: " + payloadSensor + "\nSensor value: " + payloadData + "\n") # Debugging
-    # Write values to appropriate lines in file /home/pi/HydroSoil/livedata.txt
+    # Write values to appropriate lines in file livedata.txt
     with open('/home/pi/HydroSoil/settings.txt') as file:
       settingsData = file.readlines()
     with open('/home/pi/HydroSoil/livedata.txt') as file:
@@ -62,11 +62,37 @@ def on_message(client, userdata, msg):
       i += 1
     
     if s == 0: # This sensor is not registered as a zone, report a new sensor was detected
-      liveData[30] = "newdetected=" + payloadSensor + "\n"
-      with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+      if liveData[30][12:-1] == "0":
+        liveData[30] = "newdetected=" + payloadSensor + "\n"
+        liveData[31] = "nsenslastactivity=" + str(datetime.datetime.today()) + "\n"
+        with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
           file.writelines(liveData)
+      
+      else:
+        unitCell = liveData[30][12:-1].split(";")
+        timeCell = liveData[31][18:-1].split(";")
+        if payloadSensor not in unitCell:
+          liveData[30] = liveData[30][:-1] + ";" + payloadSensor + "\n"
+          liveData[31] = liveData[31][:-1] + ";" + str(datetime.datetime.today()) + "\n"
+        else:
+          x = 0
+          for item in unitCell:
+            if item == payloadSensor:
+              timeCell[x] = str(datetime.datetime.today())
+              # Add all the elements back together again and write to livedata file
+              liveData[30] = "newdetected="
+              liveData[31] = "nsenslastactivity="
+              for item in unitCell:
+                liveData[30] += item + ";"
+              for item in timeCell:
+                liveData[31] += item + ";"
+              liveData[30] = '\n'.join(liveData[30].rsplit(';', 1)) # Replace last ; with newline
+              liveData[31] = '\n'.join(liveData[31].rsplit(';', 1)) # Replace last ; with newline
+        with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+          file.writelines(liveData)
+          
   elif str(msg.topic) == "HydroSoil App":
-    # Data Recieved from HydroSoil App
+    # Data Received from HydroSoil App
     # Process & parse payload
     pass
 
@@ -93,6 +119,48 @@ def check_disconnect():
     except:
       pass # This doesn't matter as routine is run every 2 seconds
     i += 1
+  
+  # Check new/unregistered sensors
+  try:
+    if liveData[30][12:-1] != "0":
+      unitCell = liveData[30][12:-1].split(";")
+      timeCell = liveData[31][18:-1].split(";")
+      if len(unitCell) == 1:
+        old_d = datetime.datetime(int(liveData[31][18:22]), int(liveData[31][23:25]), int(liveData[31][26:28]), int(liveData[31][29:31]), int(liveData[31][32:34]), int(liveData[31][35:37]))
+        diff = d-old_d
+        diff = diff.seconds
+        if diff > 5:
+          liveData[30] = "newdetected=0\n"
+          liveData[31] = "nsenslastactivity=0\n"
+          with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+            file.writelines(liveData)
+      else:
+        i = 0
+        for item in unitCell:
+          old_d = datetime.datetime(int(timeCell[i][0:4]), int(timeCell[i][5:7]), int(timeCell[i][8:10]), int(timeCell[i][11:13]), int(timeCell[i][14:16]), int(timeCell[i][17:19]))
+          diff = d-old_d
+          diff = diff.seconds
+          if diff > 5:
+            unitCell.pop(i)
+            timeCell.pop(i)
+            # Add all the elements back together again and write to livedata file
+            if unitCell == []:
+              liveData[30] = "newdetected=0\n"
+              liveData[31] = "nsenslastactivity=0\n"
+            else:
+              liveData[30] = "newdetected="
+              liveData[31] = "nsenslastactivity="
+              for item in unitCell:
+                liveData[30] += item + ";"
+              for item in timeCell:
+                liveData[31] += item + ";"
+              liveData[30] = '\n'.join(liveData[30].rsplit(';', 1)) # Replace last ; with newline
+              liveData[31] = '\n'.join(liveData[31].rsplit(';', 1)) # Replace last ; with newline
+            with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+              file.writelines(liveData)
+          i += 1
+  except:
+    pass
   threading.Timer(2.0, check_disconnect).start()
 
 check_disconnect()

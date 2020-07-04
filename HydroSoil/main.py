@@ -17,26 +17,13 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-# This is the main code, for handling and loading the GUI
-# It is run on boot of the Raspberry Pi
+#  This is the main code, for handling and loading the GUI
+#  It is run on boot of the Raspberry Pi
 
-# Ensure that the unit has a unique ID code
-import random # For generating ID code
-uniqueID = "" # This main unit's unique ID code
-try: # Returns exception if the file doesn't exist
-  with open('/home/pi/HydroSoil/ID.txt') as file:
-    uniqueID = file.readlines()
-except: # Unique ID doesn't exist, generate one
-  uniqueID = 'M' + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10))
-  with open('/home/pi/HydroSoil/ID.txt', 'w') as file:
-    file.writelines(uniqueID)
-else: # Unique ID file exists, check for the code in it
-  if len(uniqueID[0]) != 6 or uniqueID[0].startswith("M") == False: # If ID code is invalid generate one
-    uniqueID = 'M' + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10)) + str(random.randint(0,10))
-    with open('/home/pi/HydroSoil/ID.txt', 'w') as file:
-      file.writelines(uniqueID)
-finally:
-  uniqueID = uniqueID[0]
+# Get unique ID code (HydroLauncher generates one if needed before this script is run)
+with open('/home/pi/HydroSoil/ID.txt') as file:
+  uniqueID = file.readlines()
+uniqueID = uniqueID[0]
 
 # Import OS & Subprocess for terminal commands
 import subprocess
@@ -46,26 +33,36 @@ import os
 # Import GTK and dependencies for making/handling GUI
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gio, Gdk, GLib
+gi.require_version('WebKit', '3.0')
+from gi.repository import Gtk, Gio, Gdk, GLib, WebKit
 from gi.repository.GdkPixbuf import Pixbuf
 
 # Import wifi libraries for controlling the pi's WiFi and listing available networks
 from wireless import Wireless # For connecting and connection status
 wireless = Wireless()
 from wifi import Cell, Scheme # For listing available networks
-#print(Cell.all('wlan0'))
 
 # Import time libraries to get and parse time
 import datetime
 import ntplib
+from time import sleep, strftime, gmtime, tzset, localtime
 client = ntplib.NTPClient()
 
 #  Import requests and json to parse the weather forecast
 import requests
 import json
 api_key = 'b0fbd0c6dfd34924a0266d204e4a5d14'
-api_location = 'postal_code=5159'
-api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&key=' + api_key
+
+with open('/home/pi/HydroSoil/settings.txt') as file:
+  settingsData = file.readlines()
+
+if settingsData[44][13:-1] == 'postcode':
+  api_location = 'postal_code=' + settingsData[45][9:-1] + '&country=' + settingsData[46][16:-1]
+else:
+  api_location = 'city=' + settingsData[45][9:-1] + '&country=' + settingsData[46][16:-1]
+
+api_units = settingsData[47][13:-1] # M for metric (Celsius), I for imperial (Farenheit)
+api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&units=' + api_units + '&key=' + api_key
 
 # Import CSV for parsing csv data for the plant/crop types
 import csv
@@ -85,7 +82,8 @@ curNewZone = 0 # The new zone that the user has currently selected on various di
 curPlantCrop= -1 # The current plant or crop the user has selected in the change plant/crop dialog
 warningOpen = 0 # Whether the warning dialog is currently open
 dateToday = 0 # The date today, used for updating the calendar when the day changes
-sensBlacklist = "" # List of sensors that the user pressed "Cancel" when being asked to set it up
+sensBlacklist = [] # List of sensors that the user pressed "Cancel" when being asked to set it up
+criticalZones = [] # Zones that are critically low and displayed in warning dialog
 # Stored weather data for next 7 days
 forecastData = [
     (0, 0, 0, 0, 0, 0, 0, 0, "", "", 0), # Layout:  date (date obj), max temp (int), min temp (int), humidity (int), rain (int), rain prob (int), gust speed (int), wind dir (str), uv index (int), description (str), weather code (int)
@@ -96,65 +94,92 @@ forecastData = [
     (0, 0, 0, 0, 0, 0, 0, 0, "", "", 0)
 ]
 
-# Start main code for class SoilSystemMain
+# Start main code for class HydroSoilMain
 
-class SoilSystemMain:
+class HydroSoilMain:
+  
+  wifiGuiList = [] # List of WiFi networks currently displayed on the GUI
 
   # These first functions are called when a main menu item is clicked
   # They load up a whole different page
   
-  def on_home_button(self, object, data=None):
+  def on_home_button(self, btn):
     # Home button (third button on bottom menu)
     # This function loads up the home page
     global Page
     Page = 1
     PageTabs = self.builder.get_object("Content Tabs")
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
     PageTabs.set_current_page(0)
     self.builder.get_object('Title').set_title('Home')
     self.select_menu_icon("Home")
+    self.update_weather_page()
     
-  def on_calendar_button(self, object, data=None):
+  def on_calendar_button(self, btn):
     # Calendar button (first button on bottom menu)
     # This function loads up the calendar page
     global Page
     Page = 2
     PageTabs = self.builder.get_object("Content Tabs")
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
     PageTabs.set_current_page(1)
     self.builder.get_object('Title').set_title('Calendar')
     self.select_menu_icon("Calendar")
     
-  def on_weather_button(self, object, data=None):
+  def on_weather_button(self, btn):
     # Weather forecast button (second button on bottom menu)
     # This function loads up the weather forecast page
     global Page
     Page = 3
     PageTabs = self.builder.get_object("Content Tabs")
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
     PageTabs.set_current_page(2)
     self.select_menu_icon("Weather")
     self.builder.get_object('Title').set_title('Weather Forecast')
     self.update_weather_page()
     
-  def on_zones_button(self, object, data=None):
+  def on_zones_button(self, btn):
     # Irrigation zones button (fourth button on bottom menu)
     # This function loads up the irrigation zones page
     global Page
     Page = 4
     PageTabs = self.builder.get_object("Content Tabs")
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
     PageTabs.set_current_page(3)
     self.select_menu_icon("Zones")
     self.builder.get_object('Title').set_title('Irrigation Zones')
     self.update_zones()
+    if self.curNotificationType == 3:
+      self.builder.get_object('Notification').set_reveal_child(False)
+      self.curNotificationType = 0
     
-  def on_settings_button(self, object, data=None):
+  def on_settings_button(self, btn):
     # Settings button (last button on bottom menu)
     # This function loads up the settings page
     global Page
     Page = 5
-    self.builder.get_object("Settings Layout").set_current_page(0) # Go to main settings page
+    self.builder.get_object('Settings Stack').set_visible_child(self.builder.get_object('Settings Child 0')) # Go to main settings page
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
     PageTabs = self.builder.get_object("Content Tabs")
     PageTabs.set_current_page(4)
     self.builder.get_object('Title').set_title('Settings')
     self.select_menu_icon("Settings")
+    self.load_settings_radios()
     
   def select_menu_icon(self, iconName="Home"):
     # Sets an icon (makes it blue) and deselects the others
@@ -178,33 +203,120 @@ class SoilSystemMain:
       Icon = self.builder.get_object("Settings Icon")
       Icon.set_from_file("assets/Settings.png")
   
-  def on_setting(self, btn):
+  def load_settings_radios(self):
+    # Set the radio buttons on the main settings page to the correct values
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    if settingsData[47][13:-1] == 'M':
+      self.builder.get_object('MetricRadio').set_active(True)
+    else:
+      self.builder.get_object('ImperialRadio').set_active(True)
+  
+  def on_setting(self, control, gparamstring=None):
     # When one of the settings buttons are clicked on the settings page
-    self.builder.get_object("Settings Layout").set_current_page(int(btn.get_name()))
-    # Some pages also have special things that need to be done when opened e.g. start searching for WiFi networks
-    curSettingsPage = int(btn.get_name())
+    if control.get_name() == "Settings Stack":
+      curSettingsPage = int(control.get_visible_child().get_name())
+    else:
+      # A button on the general page was clicked
+      self.builder.get_object('Settings Stack').set_visible_child(self.builder.get_object('Setting Child ' + control.get_name()))
+      curSettingsPage = int(control.get_name())
+      
+    # Some pages also have special things that need to be done when opened e.g. start searching for WiFi network
     if curSettingsPage == 1:
       # Disable new sensor found message as it is already searching for new units
-      # Start searching for new HydroUnits
-      pass
+      if self.curNotificationType == 1:
+        self.builder.get_object('Notification').set_reveal_child(False)
+        self.curNotificationType = 0
+      self.unit_list.clear()
+      self.unitGuiList.clear()
+      self.builder.get_object('Zone Selection Button').set_label("Select Zone...")
+      self.builder.get_object('Zone Chooser').hide()
+      self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+      self.curNewZone = -1
+      self.zoneRowNo = -1
+      self.unitRowNo = -1
+      # Start a service to search for HydroUnits until page is closed
+      unitsearchroutine = GLib.timeout_add(3000, self.hydrounit_search) # 3 seconds
+      
     elif curSettingsPage == 2:
       # Set up GUI and add all info for zone configuration
       pass
+      
     elif curSettingsPage == 3:
       # Start searching for WiFi networks
-      pass
+      if wireless.current() != None:
+        self.builder.get_object('WiFi Desc').set_text("Status: Currently connected to WiFi network '" + str(wireless.current()) + "'")
+      else:
+        self.builder.get_object('WiFi Desc').set_text("Status: Not connected to a WiFi network")
+      self.builder.get_object('WiFi Title').set_text("Searching for WiFi Networks...")
+      self.builder.get_object('WiFi Password Box').hide()
+      self.builder.get_object('WiFi Connect').set_sensitive(False)
+      # Start a service to search for WiFi networks until page is closed
+      wifisearchroutine = GLib.timeout_add(3000, self.wifi_search) # 3 seconds
+      
     elif curSettingsPage == 4:
       # Load in current location information
-      pass
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+        settingsData = file.readlines()
+      curType = settingsData[44][13:-1]
+      curLocation = settingsData[45][9:-1]
+      curCountry = settingsData[46][16:-1]
+      self.builder.get_object('Location Status').set_text("")
+      
+      if curType == "postcode":
+        self.builder.get_object('WeatherRadio2').set_active(True)
+        self.builder.get_object('Postcode Box').set_text(curLocation)
+        self.builder.get_object('Country Box 2').set_text(curCountry)
+        self.builder.get_object('Citystate Box').set_text("")
+        self.builder.get_object('Country Box 1').set_text("")
+        
+        self.builder.get_object('Postcode Box').set_sensitive(True)
+        self.builder.get_object('Country Box 2').set_sensitive(True)
+        self.builder.get_object('Citystate Box').set_sensitive(False)
+        self.builder.get_object('Country Box 1').set_sensitive(False)
+      else:
+        self.builder.get_object('WeatherRadio1').set_active(True)
+        self.builder.get_object('Citystate Box').set_text(curLocation)
+        self.builder.get_object('Country Box 1').set_text(curCountry)
+        self.builder.get_object('Postcode Box').set_text("")
+        self.builder.get_object('Country Box 2').set_text("")
+        
+        self.builder.get_object('Postcode Box').set_sensitive(False)
+        self.builder.get_object('Country Box 2').set_sensitive(False)
+        self.builder.get_object('Citystate Box').set_sensitive(True)
+        self.builder.get_object('Country Box 1').set_sensitive(True)
+    
     elif curSettingsPage == 5:
+      # Show last time sync occured and put timezone/current time in GUI
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+          settingsData = file.readlines()
+      self.builder.get_object('Timezone Status').set_text("")
+      self.timezone_list.clear()
+      self.builder.get_object('TZ Country Box').set_text("")
+      self.builder.get_object('Current Timezone').set_text("Current timezone: " + settingsData[49][9:-1] + " (" + self.prepareGmtOffset(int(settingsData[50][9:-1])) + ")")
+      self.builder.get_object('Last Sync Text').set_text("Last synced: " + settingsData[0][14:-1])
+      
+    elif curSettingsPage == 6:
       # Load in list of registered devices
       pass
+      
     elif curSettingsPage == 7:
       # Load in device information
+      with open('/home/pi/HydroSoil/version') as file:
+        currentVersion = file.readlines()
+      currentVersion = currentVersion[0]
+      self.builder.get_object('Device Info').set_text("hydrOS " + currentVersion + "\nDevice Information: HydroSoil Smart Irrigation System HydroCore\nDevice Status: Official HydroSoil Product")
       pass
-    elif curSettingsPage == 8:
+      
+    elif curSettingsPage == 9:
       # Check for available updates
       self.builder.get_object('Update Text').set_text("Checking for updates...")
+      self.builder.get_object('Update Desc').hide()
+      self.builder.get_object('Status Text Update').hide()
+      self.builder.get_object('Update Action').hide()
+      self.builder.get_object('Release Notes Window').hide()
+      self.builder.get_object('Release Notes Title').hide()
+      while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
       latestData = requests.get('https://api.github.com/repos/BlaT2512/hydrOS/releases/latest').json()
       latestVersion = latestData['tag_name']
       latestNotes = latestData['body'].split('\r\n')
@@ -216,20 +328,485 @@ class SoilSystemMain:
       if currentVersion != latestVersion:
         self.builder.get_object('Update Text').set_text("hydrOS " + latestVersion + " is available!")
         self.builder.get_object('Update Desc').set_text("hydrOS " + latestVersion + " is ready to download. Click the button below to begin the download.\nDownload size: " + latestSize + "\n" + latestType)
+        self.builder.get_object('Update Desc').show()
         self.builder.get_object('Status Text Update').show()
         self.builder.get_object('Update Action').show()
+        self.builder.get_object('Release Notes Window').show()
+        self.builder.get_object('Release Notes Title').show()
         self.builder.get_object('Status Text Update').set_text("Status: Ready to download")
         self.builder.get_object('Update Action').set_label("Download Update")
         self.builder.get_object('Release Notes').set_text(latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
+        self.builder.get_object('Settings Stack').child_set_property(self.builder.get_object('Setting Child 9'), 'needs-attention', True)
         
       else:
         self.builder.get_object('Update Text').set_text("You have the latest release")
         self.builder.get_object('Update Desc').set_text("hydrOS " + currentVersion + " is the latest version.")
+        self.builder.get_object('Update Desc').show()
         self.builder.get_object('Status Text Update').hide()
         self.builder.get_object('Update Action').hide()
+        self.builder.get_object('Release Notes Window').show()
+        self.builder.get_object('Release Notes Title').show()
         self.builder.get_object('Release Notes').set_text(latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
+        self.builder.get_object('Settings Stack').child_set_property(self.builder.get_object('Setting Child 9'), 'needs-attention', False)
+
+  def hydrocore_reset(self, btn):
+    # Open the final confirmation dialog for a HydroCore factory reset
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(True)
+  
+  def cancel_reset(self, btn):
+    # Cancel HydroCore reset
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+  
+  def confirm_reset(self, btn):
+    # Reset the HydroCore to factory settings
+    self.builder.get_object('Confirm Reset Text').set_text("Resetting HydroCore, please wait...")
+    self.builder.get_object('Confirm Reset Button Box').hide()
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    
+    # Check if an update is needed
+    latestData = requests.get('https://api.github.com/repos/BlaT2512/hydrOS/releases/latest').json()
+    latestVersion = latestData['tag_name']
+    latestNotes = latestData['body'].split('\r\n')
+    with open('/home/pi/HydroSoil/version') as file:
+      currentVersion = file.readlines()
+    currentVersion = currentVersion[0]
+    if currentVersion != latestVersion:
+      # Download update and prepare for installation
+      os.system("git clone -b '" + latestVersion + "' --single-branch --depth 1 https://github.com/BlaT2512/hydros.git /home/pi/HydroSoilNew")
+      with open('/home/pi/HydroSoilNew/newupdate', 'w') as file:
+        file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
+      with open('/home/pi/HydroLauncher/updatenow', 'w') as file:
+        file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
+    
+    # Write files needed and exit GUI to HydroLauncher
+    with open('/home/pi/HydroLauncher/reset', 'w') as file:
+      file.writelines("")
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+    exit(0)
+  
+  def hydrounit_search(self):
+    # Search for HydroUnits
+    with open('/home/pi/HydroSoil/livedata.txt') as file:
+      liveData = file.readlines()
+    if liveData[30][12:-1] == "0":
+      self.unit_list.clear()
+      self.unitGuiList = []
+    else:
+      unitCell = liveData[30][12:-1].split(";")
+      tempUnitList = []
+      
+      for unit in unitCell:
+        if unit not in self.unitGuiList:
+          # Add this unit to the list
+          if unit[0:1] == 'S':
+            self.unit_list.append([Pixbuf.new_from_file_at_size('assets/HydroUnit Standard.png', 106, 106), unit[1:], unit])
+          else:
+            self.unit_list.append([Pixbuf.new_from_file_at_size('assets/HydroUnit Premium.png', 106, 106), unit[1:], unit])
+          self.unitGuiList.append(unit)
+        tempUnitList.append(unit)
+      
+      i = 0
+      for unit in self.unitGuiList:
+        if unit not in tempUnitList:
+          # Remove this entry from the list
+          for row in self.unit_list:
+            if row[2] == unit:
+              self.unit_list.remove(row.iter)
+              self.unitGuiList.pop(i)
+              if self.unitGuiList == []:
+                self.builder.get_object('Zone Chooser').hide()
+                self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+              break
+        i += 1
+          
+    if self.builder.get_object('Content Tabs').get_current_page() == 4 and self.builder.get_object('Settings Stack').get_visible_child().get_name() == '1':
+      return True
+    else:
+      return False
+  
+  def on_newhydrounit_clicked(self, iconview, pathlist):
+    self.builder.get_object('Zone Chooser').show()
+    self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+    self.curNewZone = -1
+    self.zoneRowNo = -1
+    self.builder.get_object('Zone Selection Button').set_label("Select Zone...")
+    self.unitRowNo = 0
+    for path in pathlist:
+      self.unitRowNo = path
+  
+  def on_newhydrounit_unselect(self, iconview):
+    self.builder.get_object('Zone Chooser').hide()
+    self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+    self.unitRowNo = -1
+  
+  def on_newsensor_selectzone(self, btn):
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    # Prepare the treeview
+    self.zones_list.clear()
+    self.zoneRowNo = -1
+    i = 1
+    s = 0
+    while i < nZones+1:
+      if settingsData[i][11:-1] == '0':
+        self.zones_list.append(["Zone " + str(i), i])
+        if self.newZoneNo == i:
+          self.builder.get_object('Zone Selector Tree').set_cursor(s)
+          self.zoneRowNo = s
+        s += 1
+      i += 1
+    self.builder.get_object('Zone Selector').set_reveal_child(True)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+  
+  def on_selectzone_dismiss(self, btn):
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+  
+  def zoneselector_select(self, tree, pathlist, column):
+    self.zoneRowNo = 0
+    for path in pathlist:
+      self.zoneRowNo = path
+  
+  def on_selectzone_done(self, btn):
+    # Save the zone the user selected
+    if self.zoneRowNo == -1:
+      self.curNewZone = -1
+      self.newZoneNo = -1
+      self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+      self.builder.get_object('Zone Selection Button').set_label("Select Zone...")
+    else:
+      self.curNewZone = self.zoneRowNo
+      self.builder.get_object('Add Zone/Sensor').set_sensitive(True)
+      i = 0
+      for row in self.zones_list:
+        if i == self.curNewZone:
+          self.builder.get_object('Zone Selection Button').set_label(row[0])
+          self.newZoneNo = row[1]
+          break
+        i += 1
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+  
+  def on_newhydrounit_add(self, btn):
+    # Register the new selected HydroUnit to the selected zone
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    with open('/home/pi/HydroSoil/livedata.txt') as file:
+      liveData = file.readlines()
+    
+    i = 0
+    for row in self.zones_list:
+      if i == self.curNewZone:
+        zonerow = row[1]
+        settingsData[zonerow] = "zone" + str(zonerow) + "setup="
+        liveData[30] = "newdetected=0\n"
+        liveData[31] = "nsenslastactivity=0\n"
+        break
+      i += 1
+    i = 0
+    for row in self.unit_list:
+      if i == self.unitRowNo:
+        settingsData[zonerow] += row[2] + "\n"
+        self.unit_list.remove(row.iter)
+        break
+      i += 1
+        
+    with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+      file.writelines(liveData)
+    with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+      file.writelines(settingsData)
+    
+    self.builder.get_object('Zone Chooser').hide()
+    self.builder.get_object('Add Zone/Sensor').set_sensitive(False)
+    self.builder.get_object('Zone Selection Button').set_label("Select Zone...")
+    self.update_enabled_zones()
+    self.unitRowNo = -1
+    self.zoneRowNo = -1
+    self.curNewZone = -1
+    self.newZoneNo = -1
+      
+  def on_timezone_search(self, btn):
+    # Search for timezones in specified country on the timezone settings page
+    self.builder.get_object('Timezone Status').set_text("Loading timezone list...")
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    
+    country_codes = []
+    with open("country-codes.csv", newline='') as csvfile:
+      csvparser = csv.reader(csvfile, delimiter=',')
+      Tup1 = ()
+      i = 0
+      for Tup1 in csvparser:
+        country_codes.append(str(Tup1[1]))
+        i += 1
+      csvfile.closed
+    
+    if self.builder.get_object('TZ Country Box').get_text() not in country_codes:
+      self.builder.get_object('Timezone Status').set_text("Country code is invalid. Timezone list not loaded.")
+      return
+    
+    # Country code is valid, procede to querying server and displaying timezones on GUI
+    tz_json_data = requests.get("http://api.timezonedb.com/v2.1/list-time-zone?key=UWA54MQUYKYN&format=json&country=" + self.builder.get_object('TZ Country Box').get_text()).json()
+    self.timezone_list.clear()
+    for item in tz_json_data['zones']:
+      self.timezone_list.insert(0, [item['zoneName'], self.prepareGmtOffset(item['gmtOffset']), item['gmtOffset'], item['countryCode']])
+    self.builder.get_object('Timezone Status').set_text("")
+  
+  def prepareGmtOffset(self, num):
+    # Convert from seconds to hours
+    if num == 0:
+      return "UTC"
+    elif num < 0:
+      prefix = "UTC-"
+    else:
+      prefix = "UTC+"
+    num = str(strftime("%H:%M", gmtime(abs(num))))
+    # Add prefix and return number
+    return prefix + num
+  
+  def on_locationtype_change(self, btn):
+    if btn.get_active():
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+        settingsData = file.readlines()
+        
+      if btn.get_label() == "Postcode & Country code":
+        # Change to postcode mode
+        self.builder.get_object('Postcode Box').set_sensitive(True)
+        self.builder.get_object('Country Box 2').set_sensitive(True)
+        self.builder.get_object('Citystate Box').set_sensitive(False)
+        self.builder.get_object('Country Box 1').set_sensitive(False)
+      else:
+        # Change to city/state mode
+        self.builder.get_object('Postcode Box').set_sensitive(False)
+        self.builder.get_object('Country Box 2').set_sensitive(False)
+        self.builder.get_object('Citystate Box').set_sensitive(True)
+        self.builder.get_object('Country Box 1').set_sensitive(True)
+  
+  def on_timezone_apply(self, btn):
+    try:
+      rowNo = self.builder.get_object('Timezone Tree').get_selection().get_selected_rows()[1][0][0]
+    except:
+      self.builder.get_object('Timezone Status').set_text("Please select a timezone from the list.")
+      return
+    self.builder.get_object('Timezone Status').set_text("Applying new timezone settings...")
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    
+    i = 0
+    for row in self.timezone_list:
+      if i == rowNo:
+        # Save and set the new timezone
+        with open('/home/pi/HydroSoil/settings.txt') as file:
+          settingsData = file.readlines()
+        settingsData[48] = "tzcountry=" + row[3] + "\n"
+        settingsData[49] = "timezone=" + row[0] + "\n"
+        settingsData[50] = "tzoffset=" + str(row[2]) + "\n"
+        with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+          file.writelines(settingsData)
+        
+        self.builder.get_object('Timezone Status').set_text("Applied new timezone settings.")
+        self.builder.get_object('Current Timezone').set_text("Current timezone: " + settingsData[49][9:-1] + " (" + self.prepareGmtOffset(int(settingsData[50][9:-1])) + ")")
+        os.environ['TZ'] = row[0]
+        tzset()
+        return
+      i += 1
+
+  def time_sync(self, btn):
+    # Sync the time with the NTP server
+    self.builder.get_object('Timezone Status').set_text("Syncing time...")
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    try:
+      response = client.request('pool.ntp.org')
+      os.system('sudo date ' + strftime('%m%d%H%M%Y.%S',localtime(response.tx_time)))
+    except:
+      self.builder.get_object('Timezone Status').set_text("Couldn't connect to server. Sync failed.")
+      return
+    else:
+      self.builder.get_object('Timezone Status').set_text("Time synced successfully.")
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+        settingsData = file.readlines()
+      settingsData[0] = "lastclocksync=" + datetime.datetime.now().strftime("%m/%d/%Y, %H:%M") + "\n"
+      self.builder.get_object('Last Sync Text').set_text("Last synced: " + datetime.datetime.now().strftime("%m/%d/%Y, %H:%M"))
+      with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+        file.writelines(settingsData)
+  
+  def on_location_apply(self, btn):
+    global api_key, api_location, api_units, api_call
+    # Validate the values that the user gave for location data
+    self.builder.get_object('Location Status').set_text("Validating Location...")
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    
+    country_codes = []
+    with open("country-codes.csv", newline='') as csvfile:
+      csvparser = csv.reader(csvfile, delimiter=',')
+      Tup1 = ()
+      i = 0
+      for Tup1 in csvparser:
+        country_codes.append(str(Tup1[1]))
+        i += 1
+      csvfile.closed
+    
+    if self.builder.get_object('WeatherRadio1').get_active():
+      # City, state and country mode
+      # Check country code
+      if self.builder.get_object('Country Box 1').get_text() not in country_codes:
+        self.builder.get_object('Location Status').set_text("Country code is invalid. Location not changed.")
+        return
+      
+      # Check city, state and country combination by querying server
+      try:
+        json_data = requests.get('https://api.weatherbit.io/v2.0/forecast/daily?city=' + self.builder.get_object('Citystate Box').get_text() + '&country=' + self.builder.get_object('Country Box 1').get_text() + '&days=6&key=' + api_key).json()
+      except:
+        self.builder.get_object('Location Status').set_text("Country and city/state combination is invalid. Location not changed.")
+        return
+      
+      # Location is valid, write data to settings file
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+        settingsData = file.readlines()
+      settingsData[44] = "locationtype=citystate\n"
+      settingsData[45] = "location=" + self.builder.get_object('Citystate Box').get_text() + "\n"
+      settingsData[46] = "locationcountry=" + self.builder.get_object('Country Box 1').get_text() + "\n"
+      with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+        file.writelines(settingsData)
+      self.builder.get_object('Location Status').set_text("Weather location has been changed successfully.")
+      
+      api_location = 'city=' + self.builder.get_object('Citystate Box').get_text() + '&country=' + self.builder.get_object('Country Box 1').get_text()
+      api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&units=' + api_units + '&key=' + api_key
+      self.forecast()
+      self.update_weather_page()
+      
+    else:
+      # Postcode and country mode
+      # Check country code
+      if self.builder.get_object('Country Box 2').get_text() not in country_codes:
+        self.builder.get_object('Location Status').set_text("Country code is invalid. Location not changed.")
+        return
+      
+      # Check postcode and country combination by querying server
+      try:
+        json_data = requests.get('https://api.weatherbit.io/v2.0/forecast/daily?postal_code=' + self.builder.get_object('Postcode Box').get_text() + '&country=' + self.builder.get_object('Country Box 2').get_text() + '&days=6&key=' + api_key).json()
+      except:
+        self.builder.get_object('Location Status').set_text("Country and postcode combination is invalid. Location not changed.")
+        return
+      
+      # Location is valid, write data to settings file
+      with open('/home/pi/HydroSoil/settings.txt') as file:
+        settingsData = file.readlines()
+      settingsData[44] = "locationtype=postcode\n"
+      settingsData[45] = "location=" + self.builder.get_object('Postcode Box').get_text() + "\n"
+      settingsData[46] = "locationcountry=" + self.builder.get_object('Country Box 2').get_text() + "\n"
+      with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+        file.writelines(settingsData)
+      self.builder.get_object('Location Status').set_text("Weather location has been changed successfully.")
+      
+      api_location = 'postal_code=' + self.builder.get_object('Postcode Box').get_text() + '&country=' + self.builder.get_object('Country Box 2').get_text()
+      api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&units=' + api_units + '&key=' + api_key
+      self.forecast()
+      self.update_weather_page()
+      
+  def wifi_search(self):
+    # Search for WiFi networks
+    #os.system("sudo iw dev wlan0 scan | grep SSID")
+    wifiCell = Cell.all('wlan0')
+    #self.wifi_list.clear()
+    tempWifiList = []
+    
+    for cell in wifiCell:
+      if str(cell.ssid) != "" and str(cell.ssid) not in tempWifiList:
+        if str(cell.ssid) in self.wifiGuiList:
+          # Edit the current entry with the new data
+          for row in self.wifi_list:
+            if row[0] == str(cell.ssid):
+              self.wifi_list.set_value(row.iter, 1, str(cell.encrypted))
+              self.wifi_list.set_value(row.iter, 2, str(cell.signal))
+              break
+        else:
+          # Create a new entry in the list for this new network
+          self.wifi_list.insert(0, [str(cell.ssid), str(cell.encrypted), str(cell.signal)])
+          self.wifiGuiList.append(str(cell.ssid))
+        
+        tempWifiList.append(str(cell.ssid))
+    
+    i = 0
+    for item in self.wifiGuiList:
+      if item not in tempWifiList:
+        # Remove this entry from the list
+        for row in self.wifi_list:
+          if row[0] == item:
+            self.wifi_list.remove(row.iter)
+            self.wifiGuiList.pop(i)
+            if self.wifiGuiList == []:
+              self.builder.get_object('WiFi Password Box').hide()
+              self.builder.get_object('WiFi Connect').set_sensitive(False)
+            break
+      i += 1
+    
+    if wireless.current() != None:
+      self.builder.get_object('WiFi Desc').set_text("Status: Currently connected to WiFi network '" + str(wireless.current()) + "'")
+    else:
+      self.builder.get_object('WiFi Desc').set_text("Status: Not connected to a WiFi network")
+    
+    if self.builder.get_object('Content Tabs').get_current_page() == 4 and self.builder.get_object('Settings Stack').get_visible_child().get_name() == '3':
+      return True
+    else:
+      return False
+  
+  def wifinetwork_select(self, tree, pathlist, column):
+    self.wifiRowNo = 0
+    for path in pathlist:
+      self.wifiRowNo = path
+    i = 0
+    for row in self.wifi_list:
+      if i == self.wifiRowNo:
+        if row[1] != "False":
+          self.builder.get_object('WiFi Password Box').show()
+        else:
+          self.builder.get_object('WiFi Password Box').hide()
+        self.builder.get_object('WiFi Connect').set_sensitive(True)
+      i += 1
+  
+  def wifinetwork_connect(self, btn):
+    # Connect to currently selected WiFi network
+    if self.builder.get_object('WiFi Password').get_text() == "":
+      return
+    
+    i = 0
+    for row in self.wifi_list:
+      if i == self.wifiRowNo:
+        
+        self.builder.get_object('WiFi Title').set_text("Connecting to '" + row[0] + "'...") # Set title status
+        while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+        
+        wireless.connect(ssid=row[0], password=self.builder.get_object('WiFi Password').get_text())
+        
+        wificoncheck = GLib.timeout_add(6000, self.wifi_connection_check)
+        return
+      i += 1
+  
+  def wifi_connection_check(self):
+    if wireless.current() != None:
+      self.builder.get_object('WiFi Title').set_text("Connected!")
+      self.builder.get_object('WiFi Desc').set_text("Status: Currently connected to WiFi network '" + str(wireless.current()) + "'")
+    else:
+      self.builder.get_object('WiFi Title').set_text("Failed, try checking WiFi credentials and configuration")
+      self.builder.get_object('WiFi Desc').set_text("Status: Not connected to a WiFi network")
+
+    wifistatusreset = GLib.timeout_add(3000, self.wifi_status_reset) # In 3 seconds reset title to searching text
+  
+  def wifi_status_reset(self):
+    self.builder.get_object('WiFi Title').set_text("Searching for WiFi Networks...")
+    return False # Only needs to run once
+  
+  def on_wifi_disconnect(self, btn):
+    # Disconnect from current WiFi network
+    wireless.connect(ssid="", password="")
+    self.builder.get_object('WiFi Title').set_text("Disconnected from current WiFi network")
+    self.builder.get_object('WiFi Desc').set_text("Status: Not connected to a WiFi network")
+    wifistatusreset = GLib.timeout_add(3000, self.wifi_status_reset) # In 3 seconds reset title to searching text
   
   def on_update_action(self, btn):
+    global secondroutine, weatherroutine
     # Called when install/download update button is pressed
     btn.set_sensitive(False)
     if btn.get_label() == "Download Update":
@@ -242,6 +819,7 @@ class SoilSystemMain:
       self.builder.get_object('Update Desc').set_text("hydrOS " + latestVersion + " is downloading...\nDownload size: " + latestSize + "\n" + latestType)
       self.builder.get_object('Status Text Update').set_text("Status: Downloading...")
       self.builder.get_object('Update Action').set_sensitive(False)
+      while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
       os.system("git clone -b '" + latestVersion + "' --single-branch --depth 1 https://github.com/BlaT2512/hydros.git /home/pi/HydroSoilNew")
       self.builder.get_object('Update Text').set_text("Ready to Install")
       self.builder.get_object('Update Desc').set_text("hydrOS " + latestVersion + " has been downloaded and is ready to install.\nThe HydroLauncher will be opened to install the update, and then a restart will automatically occur.")
@@ -249,7 +827,7 @@ class SoilSystemMain:
       self.builder.get_object('Update Action').set_label("Install Update & Restart")
       self.builder.get_object('Update Action').set_sensitive(True)
     else:
-      # Install new available
+      # Install new available update
       latestData = requests.get('https://api.github.com/repos/BlaT2512/hydrOS/releases/latest').json()
       latestVersion = latestData['tag_name']
       latestNotes = latestData['body'].split('\r\n')
@@ -257,12 +835,15 @@ class SoilSystemMain:
       self.builder.get_object('Update Desc').set_text("hydrOS " + latestVersion + " is about to be installed.\nPreparing this update will take up to 10 seconds...")
       self.builder.get_object('Status Text Update').set_text("Status: Preparing install...")
       self.builder.get_object('Update Action').set_sensitive(False)
+      while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
       with open('/home/pi/HydroSoilNew/newupdate', 'w') as file:
         file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
       # Prepare for hydrOS to be terminated
       # Communicate with HydroLauncher and make it install update
       with open('/home/pi/HydroLauncher/updatenow', 'w') as file:
         file.writelines(latestVersion + '\n' + latestNotes[0] + '\n\n' + '\n'.join(map(str, latestNotes[5:])))
+      # End hydrOS GUI
+      exit(0)
   
   def on_setup_next(self, btn):
     # When next button is clicked on intial setup on one of the pages
@@ -271,81 +852,294 @@ class SoilSystemMain:
       self.builder.get_object("Setup container").set_current_page(int(btn.get_name()))
     # Some pages also have special things that need to be done when opened e.g. start searching for WiFi networks
     curSetupPage = int(btn.get_name())
+    if curSetupPage == 1 and wireless.current() != None:
+      curSetupPage = 2
+      self.builder.get_object("Setup container").set_current_page(2)
+    
     if curSetupPage == 1:
       # Start searching for WiFi networks
-      pass
+      self.builder.get_object('WiFi Status Setup').set_text("Searching for WiFi Networks...")
+      self.builder.get_object('WiFi Password Box Setup').hide()
+      self.builder.get_object('WiFi Next Setup').set_sensitive(False)
+      # Start a service to search for WiFi networks until page is closed
+      self.wifisearchroutinesetup = GLib.timeout_add(3000, self.wifi_search_setup) # 3 seconds
+      
     elif curSetupPage == 2:
       # Start searching for HydroUnit sensors
-      pass
+      try:
+        GLib.source_remove(self.wifisearchroutinesetup)
+      except:
+        pass
+      self.unit_list_setup.clear()
+      self.unitGuiSetup.clear()
+      self.builder.get_object('Zone Selection Button Setup').set_label("Select Zone...")
+      self.builder.get_object('Zone Chooser Setup').hide()
+      self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+      self.curNewZone = -1
+      self.zoneSetupwNo = -1
+      self.unitSetupNo = -1
+      # Start a service to search for HydroUnits until page is closed
+      self.unitsearchroutinesetup = GLib.timeout_add(3000, self.hydrounit_search_setup) # 3 seconds
+    
+    elif curSetupPage == 3:
+      # Remove HydroUnit search routine
+      GLib.source_remove(self.unitsearchroutinesetup)
+    
     elif curSetupPage == 6:
       # Finish setup and restart
       with open('/home/pi/HydroSoil/setupvalid', 'w') as file:
         file.writelines("\n")
-      
-      try: # Returns exception if the file doesn't exist
-        with open('/home/pi/HydroSoil/settings.txt') as file:
-          settingsData = file.readlines()
-      except: # Settings doesn't exist, generate blank settings
-        settingsData = '''lastclocksync=never
-zone1setup=0
-zone2setup=0
-zone3setup=0
-zone4setup=0
-zone5setup=0
-zone6setup=0
-zone1=Automatic
-zone2=Automatic
-zone3=Automatic
-zone4=Automatic
-zone5=Automatic
-zone6=Automatic
-zone1program=
-zone2program=
-zone3program=
-zone4program=
-zone5program=
-zone6program=
-zone1cropf=
-zone2cropf=
-zone3cropf=
-zone4cropf=
-zone5cropf=
-zone6cropf=
-zone1crop=
-zone2crop=
-zone3crop=
-zone4crop=
-zone5crop=
-zone6crop=
-zone1rmoisture=0
-zone2rmoisture=0
-zone3rmoisture=0
-zone4rmoisture=0
-zone5rmoisture=0
-zone6rmoisture=0
-zone1lmoisture=0
-zone2lmoisture=0
-zone3lmoisture=0
-zone4lmoisture=0
-zone5lmoisture=0
-zone6lmoisture=0
-calweekstart=
-
-        '''
-        with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
-          file.writelines(settingsData)
-      
       os.system('sudo reboot')
   
+  def hydrounit_search_setup(self):
+    # Search for HydroUnits
+    with open('/home/pi/HydroSoil/livedata.txt') as file:
+      liveData = file.readlines()
+    if liveData[30][12:-1] == "0":
+      self.unit_list_setup.clear()
+      self.unitGuiSetup = []
+    else:
+      unitCell = liveData[30][12:-1].split(";")
+      tempUnitList = []
+      
+      for unit in unitCell:
+        if unit not in self.unitGuiSetup:
+          # Add this unit to the list
+          if unit[0:1] == 'S':
+            self.unit_list_setup.append([Pixbuf.new_from_file_at_size('assets/HydroUnit Standard.png', 106, 106), unit[1:], unit])
+          else:
+            self.unit_list_setup.append([Pixbuf.new_from_file_at_size('assets/HydroUnit Premium.png', 106, 106), unit[1:], unit])
+          self.unitGuiSetup.append(unit)
+        tempUnitList.append(unit)
+      
+      i = 0
+      for unit in self.unitGuiSetup:
+        if unit not in tempUnitList:
+          # Remove this entry from the list
+          for row in self.unit_list_setup:
+            if row[2] == unit:
+              self.unit_list_setup.remove(row.iter)
+              self.unitGuiSetup.pop(i)
+              if self.unitGuiSetup == []:
+                self.builder.get_object('Zone Chooser Setup').hide()
+                self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+              break
+        i += 1
+    return True
+  
+  def on_newhydrounit_clicked_setup(self, iconview, pathlist):
+    self.builder.get_object('Zone Chooser Setup').show()
+    self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+    self.curNewZone = -1
+    self.zoneSetupNo = -1
+    self.builder.get_object('Zone Selection Button Setup').set_label("Select Zone...")
+    self.unitSetupNo = 0
+    for path in pathlist:
+      self.unitSetupNo = path
+  
+  def on_newhydrounit_unselect_setup(self, iconview):
+    self.builder.get_object('Zone Chooser Setup').hide()
+    self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+    self.unitRowNo = -1
+  
+  def on_newsensor_selectzone_setup(self, btn):
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    # Prepare the treeview
+    self.zones_list_setup.clear()
+    self.zoneSetupNo = -1
+    i = 1
+    s = 0
+    while i < 7:
+      if settingsData[i][11:-1] == '0':
+        self.zones_list_setup.append(["Zone " + str(i), i])
+        if self.newZoneNoSetup == i:
+          self.builder.get_object('Zone Selector Tree Setup').set_cursor(s)
+          self.zoneSetupNo = s
+        s += 1
+      i += 1
+    self.builder.get_object('Zone Selector Setup').set_reveal_child(True)
+  
+  def on_selectzone_dismiss_setup(self, btn):
+    self.builder.get_object('Zone Selector Setup').set_reveal_child(False)
+  
+  def zoneselector_select_setup(self, tree, pathlist, column):
+    self.zoneSetupNo = 0
+    for path in pathlist:
+      self.zoneSetupNo = path
+  
+  def on_selectzone_done_setup(self, btn):
+    # Save the zone the user selected
+    if self.zoneSetupNo == -1:
+      self.curNewZone = -1
+      self.newZoneNoSetup = -1
+      self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+      self.builder.get_object('Zone Selection Button Setup').set_label("Select Zone...")
+    else:
+      self.curNewZone = self.zoneSetupNo
+      self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(True)
+      i = 0
+      for row in self.zones_list_setup:
+        if i == self.curNewZone:
+          self.builder.get_object('Zone Selection Button Setup').set_label(row[0])
+          self.newZoneNoSetup = row[1]
+          break
+        i += 1
+    self.builder.get_object('Zone Selector Setup').set_reveal_child(False)
+  
+  def on_newhydrounit_add_setup(self, btn):
+    # Register the new selected HydroUnit to the selected zone
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    with open('/home/pi/HydroSoil/livedata.txt') as file:
+      liveData = file.readlines()
+    
+    i = 0
+    for row in self.zones_list_setup:
+      if i == self.curNewZone:
+        zonerow = row[1]
+        settingsData[zonerow] = "zone" + str(zonerow) + "setup="
+        liveData[30] = "newdetected=0\n"
+        liveData[31] = "nsenslastactivity=0\n"
+        break
+      i += 1
+    i = 0
+    for row in self.unit_list_setup:
+      if i == self.unitSetupNo:
+        settingsData[zonerow] += row[2] + "\n"
+        self.unit_list_setup.remove(row.iter)
+        break
+      i += 1
+        
+    with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
+      file.writelines(liveData)
+    with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+      file.writelines(settingsData)
+    
+    self.builder.get_object('Zone Chooser Setup').hide()
+    self.builder.get_object('Add Zone/Sensor Setup').set_sensitive(False)
+    self.builder.get_object('Zone Selection Button Setup').set_label("Select Zone...")
+    self.update_enabled_zones()
+    self.unitSetupNo = -1
+    self.zoneSetupNo = -1
+    self.curNewZone = -1
+    self.newZoneNoSetup = -1
+  
+  def wifi_search_setup(self):
+    # Search for WiFi networks
+    #os.system("sudo iw dev wlan0 scan | grep SSID")
+    wifiCell = Cell.all('wlan0')
+    tempWifiList = []
+    
+    for cell in wifiCell:
+      if str(cell.ssid) != "" and str(cell.ssid) not in tempWifiList:
+        if str(cell.ssid) in self.wifiGuiSetup:
+          # Edit the current entry with the new data
+          for row in self.wifi_list_setup:
+            if row[0] == str(cell.ssid):
+              self.wifi_list_setup.set_value(row.iter, 1, str(cell.encrypted))
+              self.wifi_list_setup.set_value(row.iter, 2, str(cell.signal))
+              break
+        else:
+          # Create a new entry in the list for this new network
+          self.wifi_list_setup.insert(0, [str(cell.ssid), str(cell.encrypted), str(cell.signal)])
+          self.wifiGuiSetup.append(str(cell.ssid))
+        
+        tempWifiList.append(str(cell.ssid))
+    
+    i = 0
+    for item in self.wifiGuiSetup:
+      if item not in tempWifiList:
+        # Remove this entry from the list
+        for row in self.wifi_list_setup:
+          if row[0] == item:
+            self.wifi_list_setup.remove(row.iter)
+            self.wifiGuiSetup.pop(i)
+            if self.wifiGuiSetup == []:
+              self.builder.get_object('WiFi Password Box Setup').hide()
+              self.builder.get_object('WiFi Next Setup').set_sensitive(False)
+            break
+      i += 1
+    return True
+  
+  def wifisetup_select(self, tree, pathlist, column):
+    self.wifiSetupNo = 0
+    for path in pathlist:
+      self.wifiSetupNo = path
+    i = 0
+    for row in self.wifi_list_setup:
+      if i == self.wifiSetupNo:
+        if row[1] != "False":
+          self.builder.get_object('WiFi Password Box Setup').show()
+        else:
+          self.builder.get_object('WiFi Password Box Setup').hide()
+        self.builder.get_object('WiFi Next Setup').set_sensitive(True)
+      i += 1
+      
+  def wifisetup_connect(self, btn):
+    # Connect to currently selected WiFi network
+    if self.builder.get_object('WiFi Password Setup').get_text() == "":
+      return
+    
+    i = 0
+    for row in self.wifi_list_setup:
+      if i == self.wifiSetupNo:
+        
+        self.builder.get_object('WiFi Status Setup').set_text("Connecting to '" + row[0] + "'...") # Set title status
+        while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+        
+        wireless.connect(ssid=row[0], password=self.builder.get_object('WiFi Password Setup').get_text())
+        
+        wificonchecksetup = GLib.timeout_add(6000, self.wifi_setup_check)
+        return
+      i += 1
+  
+  def wifi_setup_check(self):
+    if wireless.current() != None:
+      self.builder.get_object('WiFi Status Setup').set_text("Connected! Continuing setup...")
+    else:
+      self.builder.get_object('WiFi Status Setup').set_text("Failed, try checking WiFi credentials and configuration")
+  
+    continuesetup = GLib.timeout_add(3000, self.wifi_continue_setup)
+  
+  def wifi_continue_setup(self):
+    self.on_setup_next(self.builder.get_object('WiFi Next Setup'))
+  
   def on_settings_radio(self, btn):
+    global api_key, api_location, api_units, api_call
     # Runs when a radio button in settings state was changed
+    
     if btn.get_active():
       if btn.get_name() == "Metric":
         # Set units to metrics
-        pass
+        # Write data to settings file
+        with open('/home/pi/HydroSoil/settings.txt') as file:
+          settingsData = file.readlines()
+        settingsData[47] = "weatherunits=M\n"
+        with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+          file.writelines(settingsData)
+        
+        # Reload weather data
+        api_units = 'M'
+        api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&units=' + api_units + '&key=' + api_key
+        self.forecast()
+        self.update_weather_page()
+        
       elif btn.get_name() == "Imperial":
         # Set units to imperial
-        pass
+        # Write data to settings file
+        with open('/home/pi/HydroSoil/settings.txt') as file:
+          settingsData = file.readlines()
+        settingsData[47] = "weatherunits=I\n"
+        with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+          file.writelines(settingsData)
+        
+        # Reload weather data
+        api_units = 'I'
+        api_call = 'https://api.weatherbit.io/v2.0/forecast/daily?' + api_location + '&days=6&units=' + api_units + '&key=' + api_key
+        self.forecast()
+        self.update_weather_page()
+        
       elif btn.get_name() == "Sunday":
         # Set calendar week start to Sunday
         pass
@@ -374,8 +1168,6 @@ calweekstart=
     global dateToday
     # This functions runs every second and sets the time in the top-left corner
     Time = self.builder.get_object("Time")
-    #response = client.request('pool.ntp.org')
-    #Time.set_text(time.strftime('%R',time.localtime(response.tx_time)))
     timeNow = datetime.datetime.now()
     if timeNow.hour > 12:
         nowHour = timeNow.hour - 12
@@ -383,7 +1175,11 @@ calweekstart=
     else:
         nowHour = timeNow.hour
         meridian = "am"
-    Time.set_text(str(nowHour) + ":" + str(timeNow.minute) + " " + meridian)
+    if len(str(timeNow.minute)) == 1:
+      nowMinute = "0" + str(timeNow.minute)
+    else:
+      nowMinute = str(timeNow.minute)
+    Time.set_text(str(nowHour) + ":" + nowMinute + " " + meridian)
     if dateToday != datetime.date.today():
       # Update the calendar if the day has changed
       dateToday = datetime.date.today()
@@ -398,100 +1194,204 @@ calweekstart=
       self.builder.get_object('Home Cal Text').set_text(self.generate_calendar_text(dateToday.year, dateToday.month-1, dateToday.day, False))
     # Return true for the function to continue
     return True
+  
+  def update_enabled_zones(self):
+    # Update the sensitive zones on the Irrigation Zones page after a zone is registered or unregistered
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    i = 1
+    while i < nZones+1:
+      if settingsData[i][11:-1] != '0':
+        # Zone is registered
+        self.builder.get_object('Zone' + str(i)).set_sensitive(True)
+      else:
+        # Zone is not registered
+        self.builder.get_object('Zone' + str(i)).set_sensitive(False)
+        self.builder.get_object('Status Zone' + str(i)).set_text("Zone " + str(i) + " - Not Registered")
+        self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
+        self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
+        self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + ".png")
+        self.builder.get_object("Home Status Zone" + str(i)).set_from_icon_name("bluetooth-offline", Gtk.IconSize.LARGE_TOOLBAR)
+        self.builder.get_object("Home Overview Zone" + str(i)).set_text("— Not Registered")
+        if settingsData[18+i][10:-1] == '=':
+          self.builder.get_object('Crop Name Zone' + str(i)).set_text("No plant/crop set")
+        else:
+          self.builder.get_object('Crop Name Zone' + str(i)).set_text("Plant/crop: " + settingsData[18+i][11:-1])
+      i += 1
     
   def on_wifistatus_clicked(self, btn):
-    #self.builder.get_object('WiFi Status Dialog').set_property('secondary_text','WiFi network \"Tourneur\" is connected.\nWeather data is successfully being recieved.\nTime server is connected for syncing.')
-    #self.builder.get_object('WiFi Status Dialog').run()
-    #self.builder.get_object('WiFi Status Dialog').hide()
+    self.notification("WiFi network 'Tourneur' is connected. Click to go to WiFi settings", Gio.ThemedIcon(name="network-wireless-connected-100"), "gicon", Gio.ThemedIcon(name="emblem-system-symbolic"), 5000)
+    self.curNotificationType = 2
+  
+  def notification(self, text, icon, icontype, actionicon, timeout):
+    # Display an app drop-down notification with a timeout
+    # Hide notification if one is currently showing
+    self.builder.get_object('Notification').set_reveal_child(False)
+    while Gtk.events_pending(): Gtk.main_iteration() # Update GUI
+    try:
+      GLib.source_remove(self.notificationTimeout)
+    except:
+      pass
+    # Add data to the fields of the notification
+    self.builder.get_object('Notification Label').set_text(text)
+    self.builder.get_object('Notification Icon').set_from_gicon(icon, Gtk.IconSize.BUTTON)
+    if icontype == "gicon":
+      self.builder.get_object('Notification Action Icon').set_from_gicon(actionicon, Gtk.IconSize.BUTTON)
+    else:
+      self.builder.get_object('Notification Action Icon').set_from_file(actionicon)
+    # Display the notification with the specified timeout
+    self.builder.get_object('Notification').set_reveal_child(True)
+    if timeout != None:
+      self.notificationTimeout = GLib.timeout_add(timeout, self.notification_timeout)
+  
+  def notification_timeout(self):
+    # Hide current notification
+    self.builder.get_object('Notification').set_reveal_child(False)
+    self.curNotificationType = 0
+  
+  def on_notification_dismiss(self, btn):
+    global sensBlacklist
+    # Hide current notification
+    self.builder.get_object('Notification').set_reveal_child(False)
+    if self.curNotificationType == 1:
+      # User dismissed this notification about the new HydroUnit detected, blacklist it for the current session
+      with open('/home/pi/HydroSoil/livedata.txt') as file:
+        liveData = file.readlines()
+      if liveData[30][12:-1] != "0":
+        unitCell = liveData[30][12:-1].split(";")
+        for item in unitCell:
+          sensBlacklist.append(item)
+      self.notification("Notifications for the current detected HydroUnits won't show until next startup", Gio.ThemedIcon(name="dialog-ok-apply"), "gicon", Gio.ThemedIcon(name="emblem-system-symbolic"), 5000)
+      self.curNotificationType = 4
+    else:
+      self.curNotificationType = 0
+      try:
+        GLib.source_remove(self.notificationTimeout)
+      except:
+        pass
+  
+  def on_notification_action(self, btn):
+    global criticalZones
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+    # The action button was clicked on the notification
+    if self.curNotificationType == 1 or self.curNotificationType == 4:
+      # Go to the add new HydroUnit settings page
+      self.on_settings_button(self.builder.get_object('Settings'))
+      self.on_setting(self.builder.get_object('Setting Button 1'))
+    elif self.curNotificationType == 2:
+      # Go to WiFi networks settings page
+      self.on_settings_button(self.builder.get_object('Settings'))
+      self.on_setting(self.builder.get_object('Setting Button 3'))
+    else:
+      # Switch on irrigation for specified zone
+      print(criticalZones)
+      print(len(criticalZones))
+      if len(criticalZones) > 1:
+        # Go to the Irrigation Zones main page
+        self.on_zones_button(self.builder.get_object('Zones'))
+      else:
+        # Enable automatic mode for specified zone
+        with open('/home/pi/HydroSoil/settings.txt') as file:
+          settingsData = file.readlines()
+        settingsData[6+criticalZones[0]] = "zone" + str(criticalZones[0]) + "=Automatic\n"
+        with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
+          file.writelines(settingsData)
+      
+    self.builder.get_object('Notification').set_reveal_child(False)
+    try:
+      GLib.source_remove(self.notificationTimeout)
+    except:
+      pass
+    self.curNotificationType = 0
+  
+  def power_menu(self, btn):
+    # Open the Power Menu when corner power button clicked and close other menus
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+    self.builder.get_object('Power Options').set_reveal_child(True)
+  
+  def on_shutdown(self, btn):
+    # Shutdown the HydroCore
+    os.system("sudo shutdown now")
+  
+  def on_reboot(self, btn):
+    # Reboot the HydroCore
+    os.system("sudo reboot")
+  
+  def on_exit(self, btn):
+    # Exit hydrOS to the HydroLauncher recovery screen
+    with open('/home/pi/HydroLauncher/utilities', 'w') as file:
+        file.writelines("")
     exit(0)
   
+  def on_powermenu_dismiss(self, btn):
+    # Close the power menu
+    self.builder.get_object('Power Options').set_reveal_child(False)
+      
   def on_plantcrop_change(self, btn):
     global curPlantCrop, curNewZone
     # Get current settings data
     with open('/home/pi/HydroSoil/settings.txt') as file:
       settingsData = file.readlines()
     # If the zone has a current plant, select that
-    plantCropCombo = self.builder.get_object('PlantCropDropdown')
+    plantCropTree = self.builder.get_object('Plant/Crop Tree')
+    plantCropTree.get_selection().unselect_all()
     if settingsData[24+int(btn.get_name())][9:-1] != '=':
-      # Plant has been set before, so select that plant and display it at the top
-      self.builder.get_object('Current crop title').show()
-      self.builder.get_object('Current crop text').show()
-      self.builder.get_object('New crop text').show()
-      self.builder.get_object('Current crop text').set_text(settingsData[18+int(btn.get_name())][11:-1])
-      plantCropCombo.set_active(int(settingsData[24+int(btn.get_name())][10:-1]))
-      self.builder.get_object('New crop title').set_text(settingsData[18+int(btn.get_name())][11:-1])
-      curPlantCrop = int(settingsData[24+int(btn.get_name())][10:-1])
-      with open("plant-crop-list.csv", newline='') as csvfile:
-        csvparser = csv.reader(csvfile, delimiter=',')
-        Tup1 = ()
-        i = 0
-        for Tup1 in csvparser:
-          if i == curPlantCrop:
-            self.builder.get_object('New crop title').set_text(str(Tup1[0]))
-            self.builder.get_object('New crop text').set_text("Irrigation required moisture level (" + str(Tup1[1]) + "): " + str(Tup1[2]) + "%\nCritically low moisture level (" + str(Tup1[1]) + "): " + str(Tup1[3]) + "%")
-          i += 1
-        csvfile.closed
+      # Plant has been set before, so select that plant
+      i = 0
+      for row in self.crop_list:
+        if settingsData[18+int(btn.get_name())][11:-1] == row[0]:
+          plantCropTree.set_cursor(i)
+          curPlantCrop = i
+          break
+        i += 1
     else:
-      # This is the first time setting the plant/crop type
-      self.builder.get_object('Current crop title').hide()
-      self.builder.get_object('Current crop text').hide()
-      plantCropCombo.set_active(-1) # Set no plant to currently active
-      self.builder.get_object('New crop title').set_text("No plant or crop selected")
-      self.builder.get_object('New crop text').hide()
       curPlantCrop = -1
     # Set zone icon for the GUI
-    self.builder.get_object('Plant Crop Icon').set_from_file("assets/Zone " + btn.get_name() + ".png")
-    self.builder.get_object('Plant Crop Icon').set_name(btn.get_name())
+    self.builder.get_object('Plant/Crop Icon').set_from_file("assets/Zone " + btn.get_name() + " White.png")
+    self.builder.get_object('Plant/Crop Icon').set_name(btn.get_name())
     curNewZone = int(btn.get_name())
     # Show plant/crop chooser GUI
-    self.builder.get_object('Plant or Crop Selector').resize(200, 200) # 200x200 pixels
-    self.builder.get_object('Plant or Crop Selector').run()
+    self.builder.get_object('Power Options').set_reveal_child(False)
+    self.builder.get_object('Zone Selector').set_reveal_child(False)
+    self.builder.get_object('Confirm Reset').set_reveal_child(False)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(True)
   
-  def on_plantcrop_combo(self, btn):
+  def on_plantcrop_tree(self, tree, pathlist, column):
     global curPlantCrop, curNewZone
-    curPlantCrop = btn.get_active()
-    self.builder.get_object('New crop text').show()
-    with open("plant-crop-list.csv", newline='') as csvfile:
-      csvparser = csv.reader(csvfile, delimiter=',')
-      Tup1 = ()
-      i = 0
-      for Tup1 in csvparser:
-        if i == curPlantCrop:
-          self.builder.get_object('New crop title').set_text(str(Tup1[0]))
-          self.builder.get_object('New crop text').set_text("Irrigation required moisture level (" + str(Tup1[1]) + "): " + str(Tup1[2]) + "%\nCritically low moisture level (" + str(Tup1[1]) + "): " + str(Tup1[3]) + "%")
-        i += 1
-      csvfile.closed
+    for path in pathlist:
+      curPlantCrop = path
   
-  def on_changecrop_cancel(self, btn):
-    self.builder.get_object('Plant or Crop Selector').hide()
+  def on_plantcrop_dismiss(self, btn):
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
     # Ignore all user input as they cancelled their edits
   
-  def on_changecrop_save(self, btn):
+  def on_plantcrop_done(self, btn):
     global curPlantCrop, curNewZone
-    self.builder.get_object('Plant or Crop Selector').hide()
+    if curPlantCrop == -1:
+      return
     # Save changes made by the user
     # First, read the current settings file into variable
     with open('/home/pi/HydroSoil/settings.txt') as file:
       settingsData = file.readlines()
     # Then make all modifications needed
-    with open("plant-crop-list.csv", newline='') as csvfile:
-      csvparser = csv.reader(csvfile, delimiter=',')
-      Tup1 = ()
-      i = 0
-      for Tup1 in csvparser:
-        if i == curPlantCrop:
-          settingsData[18+curNewZone] = "zone" + str(curNewZone) + "cropf=" + str(Tup1[0]) + "\n"
-          settingsData[24+curNewZone] = "zone" + str(curNewZone) + "crop=" + str(curPlantCrop) + "\n"
-          settingsData[30+curNewZone] = "zone" + str(curNewZone) + "rmoisture=" + str(Tup1[2]) + "\n"
-          settingsData[36+curNewZone] = "zone" + str(curNewZone) + "lmoisture=" + str(Tup1[3]) + "\n"
-          self.builder.get_object('Crop Name Zone' + str(curNewZone)).set_text("Plant/crop: " + str(Tup1[0]))
-          self.builder.get_object('New crop text').set_text("Irrigation required moisture level (" + str(Tup1[1]) + "): " + str(Tup1[2]) + "%\nCritically low moisture level (" + str(Tup1[1]) + "): " + str(Tup1[3]) + "%")
-          break
-        i += 1
-      csvfile.closed
+    i = 0
+    for row in self.crop_list:
+      if i == curPlantCrop:
+        settingsData[18+curNewZone] = "zone" + str(curNewZone) + "cropf=" + str(row[0]) + "\n"
+        settingsData[24+curNewZone] = "zone" + str(curNewZone) + "crop=" + str(curPlantCrop) + "\n"
+        settingsData[30+curNewZone] = "zone" + str(curNewZone) + "rmoisture=" + str(row[2]) + "\n"
+        settingsData[36+curNewZone] = "zone" + str(curNewZone) + "lmoisture=" + str(row[3]) + "\n"
+        break
+      i += 1
     # Finally, write the new settings
     with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
       file.writelines(settingsData)
+    self.builder.get_object('Plant/Crop Selector').set_reveal_child(False)
   
   def on_zone_edit(self, btn):
     # Get current settings data
@@ -840,7 +1740,10 @@ calweekstart=
       todayDate = datetime.date.today()
       diff = str(itemDate - todayDate)
       # Get different required values from JSON to fill array
-      forecastData[int(diff[0])] = (itemDate, "%.0f" % item['max_temp'], "%.0f" % item['min_temp'], item['rh'], "%.1f" % item['precip'], item['pop'], "%.0f" % item['wind_gust_spd'], item['wind_cdir'], "%.0f" % item['uv'], item['weather']['description'], item['weather']['code'])
+      if api_units == 'M':
+        forecastData[int(diff[0])] = (itemDate, "%.0f" % item['max_temp'], "%.0f" % item['min_temp'], item['rh'], "%.1f" % item['precip'], item['pop'], "%.0f" % (float(item['wind_gust_spd']) * 3.6), item['wind_cdir'], "%.0f" % item['uv'], item['weather']['description'], item['weather']['code'])
+      else:
+        forecastData[int(diff[0])] = (itemDate, "%.0f" % item['max_temp'], "%.0f" % item['min_temp'], item['rh'], "%.1f" % item['precip'], item['pop'], "%.0f" % item['wind_gust_spd'], item['wind_cdir'], "%.0f" % item['uv'], item['weather']['description'], item['weather']['code'])
     return True
   
   def check_program_due(self, zoneNo):
@@ -866,39 +1769,32 @@ calweekstart=
     return False
   
   def critical_warning(self, onoff, zoneNo):
-    global warningOpen
+    global criticalZones, Page
     # Turns warning notification on or off for a zone
-    with open('/home/pi/HydroSoil/settings.txt') as file:
-      settingsData = file.readlines()
     
-    if onoff: # Turns warning notification on
-      if warningOpen: # If warning dialog is already open
-        warnText = self.builder.get_object('Warning Text').get_text()
-        if ("Zone " + str(zoneNo) in warnText) and ("Zone " + str(zoneNo) + " (" + settingsData[18+zoneNo][11:-1] + ")" not in warnText): # If the crop or plant has changed for this zone
-          warnText == "The soil moisture level of the plant's in\nsome zone's is critically low:\n"
-          warnText += ", Zone " + str(zoneNo) + " (" + settingsData[18+zoneNo][11:-1] + ")"
-          self.builder.get_object('Warning Text').set_text(warnText)
-        elif "Zone " + str(zoneNo) + " (" + settingsData[18+zoneNo][11:-1] + ")" not in warnText: # The zone is not currently in the warning dialog
-          warnText += ", Zone " + str(zoneNo) + " (" + settingsData[18+zoneNo][11:-1] + ")"
-          self.builder.get_object('Warning Text').set_text(warnText)
-      
-      else: # If warning dialog if not open at the moment
-        warnText = "The soil moisture level of the plant's in\nsome zone's is critically low:\n"
-        warnText += "Zone " + str(zoneNo) + " (" + settingsData[18+zoneNo][11:-1] + ")"
-        self.builder.get_object('Warning Text').set_text(warnText)
-        self.builder.get_object('Warning Dialog').show()
-        self.builder.get_object('Warning Dialog').set_modal(False)
-        warningOpen = 1
-    
-    else: # Turn warning notification off
-      if warningOpen: # The warning is currently open
-        self.builder.get_object('Warning Dialog').hide()
-        warningOpen = 0
-        warnText = "The soil moisture level of the plant's in\nsome zone's is critically low:\n"
-        self.builder.get_object('Warning Text').set_text(warnText)
+    if onoff: # Add this zone to warning notification or turn it on
+      if self.curNotificationType == 3: # If warning dialog is already open
+        if zoneNo not in criticalZones: # If this zone is not in the warning
+          criticalZones.append(zoneNo)
+          self.notification("Soil moisture level for multiple zones is critically low. Click for more information", Gio.ThemedIcon(name="dialog-warning"), "gicon", Gio.ThemedIcon(name="dialog-information-symbolic"), None)
+      elif self.curNotificationType == 0: # If warning dialog if not open at the moment
+        criticalZones.append(zoneNo)
+        if Page != 4: # If the page is not irrigation zones
+          self.notification("Soil moisture level for Zone " + str(zoneNo) + " is critically low. Click to enable automatic mode and switch on irrigation", Gio.ThemedIcon(name="dialog-warning"), "file", "assets/Notification Droplet.png", None)
+          self.curNotificationType = 3
+        
+    else: # Remove this zone from warning notification or turn it off
+      if zoneNo in criticalZones: # If this zone is in warning notification
+        criticalZones.remove(zoneNo)
+        if self.curNotificationType == 3: # If the warning notification is currently open
+          if len(criticalZones) == 0: # If nothing is left in the critical zones list
+            self.builder.get_object('Notification').set_reveal_child(False)
+            self.curNotificationType = 0
+          elif len(criticalZones) == 1: # If a single item is left in the critical zones list
+            self.notification("Soil moisture level for Zone " + str(criticalZones[0]) + " is critically low. Click to enable automatic mode and switch on irrigation", Gio.ThemedIcon(name="dialog-warning"), "file", "assets/Notification Droplet.png", None)
 
   def sensor_update(self):
-    global nZones, curNewZone, sensBlacklist
+    global nZones, curNewZone, sensBlacklist, Page
     # This function runs every second and turn on required irrigation, also checks if a new sensor was detected
     # Gather soil moisture data from sensors and plant/crop data
     with open('/home/pi/HydroSoil/livedata.txt') as file:
@@ -1055,78 +1951,33 @@ calweekstart=
     
     # This functions also checks for new sensors, and dispalys GUI if one was detected
     if liveData[30][12:-1] != '0':
-      newCode = liveData[30][13:-1]
-      newType = liveData[30][12:13]
-      if newType == 'S':
-        newType = "standard"
-      else:
-        newType = "premium"
-      # Set up the dropdown box for the chosen zone
-      i = 1
-      s = 0
-      while i < nZones+1:
-        if settingsData[i][11:-1] == '0':
-          # Zone is not setup so this is an option for registering
-          self.builder.get_object('NewZone'+ str(i)).set_sensitive(True)
-          s += 1
-          if s == 1:
-            # This is the first available zone, so select it
-            self.builder.get_object('NewZone' + str(i)).set_active(True)
-            self.builder.get_object('Register Confirm Text').set_text("This sensor will be registered as Zone " + str(i))
-            curNewZone = i
-        else:
-          self.builder.get_object('NewZone'+ str(i)).set_sensitive(False)
-        i += 1
-        # Change text to correct information
-        self.builder.get_object('Register Info Text').set_text("A new " + newType + " soil measure sensor has been detected (ID code " + newCode + ").\nTo set it up and connect it, choose a zone below to associate it with, and then choose it's program settings on the Zones page.\nIf you don't want to set up this sensor, press Cancel.")
-        self.builder.get_object('Register Info Text').set_line_wrap(True)
-        # Show the dialog GUI
-        self.builder.get_object('Connect New Sensor').resize(1, 1)
-        self.builder.get_object('Connect New Sensor').run()
-  
-  def on_newzone_toggle(self, btn):
-    global curNewZone
-    # Called when a different zone radio button is clicked for the new sensor detected dialog
-    if btn.get_active():
-      self.builder.get_object('Register Confirm Text').set_text("The sensor will be registered as Zone " + btn.get_name())
-      self.builder.get_object('New Zone Icon').set_from_file("assets/Zone " + btn.get_name() + ".png")
-      curNewZone = int(btn.get_name())
-  
-  def on_newsensor_cancel(self, btn):
-    # User didn't want to register the new selected zone
-    with open('/home/pi/HydroSoil/livedata.txt') as file:
-      liveData = file.readlines()
-    liveData[30] = "newdetected=0\n"
-    with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
-      file.writelines(liveData)
-    self.builder.get_object('Connect New Sensor').hide()
-  
-  def on_newsensor_connect(self, btn):
-    global curNewZone
-    # User wants to connect the new sensor
-    with open('/home/pi/HydroSoil/settings.txt') as file:
-      settingsData = file.readlines()
-    with open('/home/pi/HydroSoil/livedata.txt') as file:
-      liveData = file.readlines()
-    print(curNewZone)
-    settingsData[curNewZone] = "zone" + str(curNewZone) + "setup=" + liveData[30][12:13] + liveData[30][13:-1] + "\n"
-    liveData[30] = "newdetected=0\n"
-    self.builder.get_object('Connect New Sensor').hide()
-    with open('/home/pi/HydroSoil/livedata.txt', 'w') as file:
-      file.writelines(liveData)
-    with open('/home/pi/HydroSoil/settings.txt', 'w') as file:
-      file.writelines(settingsData)
+      self.builder.get_object('Settings Stack').child_set_property(self.builder.get_object('Setting Child 1'), 'needs-attention', True)
+      unitCell = liveData[30][12:-1].split(";")
+      for item in unitCell:
+        if item in sensBlacklist:
+          return
+      if Page != 5 or self.builder.get_object('Settings Stack').get_visible_child().get_name() != '1':
+        # Display a notification for the new sensor(s)
+        if self.curNotificationType == 0 or self.curNotificationType == 3:
+          self.notification("One or more new HydroUnit(s) have been detected. Click to connect in settings", Gio.ThemedIcon(name="list-add"), "gicon", Gio.ThemedIcon(name="emblem-system-symbolic"), None)
+          self.curNotificationType = 1
+    else:
+      self.builder.get_object('Settings Stack').child_set_property(self.builder.get_object('Setting Child 1'), 'needs-attention', False)
+      if self.curNotificationType == 1:
+        # Hide notification
+        self.builder.get_object('Notification').set_reveal_child(False)
+        self.curNotificationType = 0
     
   def second_routine(self):
     # This routine runs every second and does tasks required
     self.wifisig() # Updates the WiFi icon depending if the unit has icon or not
     self.counter() # Updates the clock every second
     self.update_zones() # Collect live data incoming from the sensors and update zones information
-    self.sensor_update() # Collect soil moisture data and turn import paho.mqtt.client as mqtton irrigation accordingly, also looks for new sensors
+    self.sensor_update() # Collect soil moisture data and turn on irrigation accordingly, also looks for new sensors
     return True
   
   def update_zones(self):
-    global nZones
+    global nZones, criticalZones
     # This function runs every second and updates the information about all the zones & zone icons
     # Get all the settings and live data
     with open('/home/pi/HydroSoil/settings.txt') as file:
@@ -1137,100 +1988,121 @@ calweekstart=
     # Update all the info - modular
     i = 1
     while i < nZones+1:
-      try: # The command below gives an exception when the file is being written to at the same time
-        self.builder.get_object("Status Zone" + str(i)).set_text("Zone " + str(i) + " - " + liveData[5+i][10:-1])
-      except: # The error is OK because this command runs every second, so it will get updated the next second
-          pass
+      if settingsData[i][11:-1] != '0': # If zone is registered
+        try: # The command below gives an exception when the file is being written to at the same time
+          self.builder.get_object("Status Zone" + str(i)).set_text("Zone " + str(i) + " - " + liveData[5+i][10:-1])
+        except: # The error is OK because this command runs every second, so it will get updated the next second
+            pass
       
-      if liveData[5+i][10:-1] == "Connected":
-        self.builder.get_object("Home Status Zone" + str(i)).set_from_icon_name("bluetooth-online", Gtk.IconSize.LARGE_TOOLBAR)
-      else:
-        self.builder.get_object("Home Status Zone" + str(i)).set_from_icon_name("bluetooth-offline", Gtk.IconSize.LARGE_TOOLBAR)
-        self.builder.get_object("Manual Switch Zone" + str(i)).set_active(False)
-        self.builder.get_object("Manual Switch Zone" + str(i)).set_sensitive(False)
+        if liveData[5+i][10:-1] == "Connected":
+          self.builder.get_object("Home Status Zone" + str(i)).set_from_icon_name("bluetooth-online", Gtk.IconSize.LARGE_TOOLBAR)
+        else:
+          self.builder.get_object("Home Status Zone" + str(i)).set_from_icon_name("bluetooth-offline", Gtk.IconSize.LARGE_TOOLBAR)
+          self.builder.get_object("Manual Switch Zone" + str(i)).set_active(False)
+          self.builder.get_object("Manual Switch Zone" + str(i)).set_sensitive(False)
 
-      self.builder.get_object("Home Overview Zone" + str(i)).set_text("— " + liveData[5+i][10:-1] + liveData[-1+i][9:-1] + ". " + settingsData[6+i][6:-1] + " mode.")
+        self.builder.get_object("Home Overview Zone" + str(i)).set_text("— " + liveData[5+i][10:-1] + liveData[-1+i][9:-1] + ". " + settingsData[6+i][6:-1] + " mode.")
 
-      if settingsData[6+i][6:-1] == "Automatic":
-        self.builder.get_object("Button1 Zone" + str(i)).set_active(True)
-        self.builder.get_object("Button2 Zone" + str(i)).set_active(False)
-        self.builder.get_object("Button3 Zone" + str(i)).set_active(False)
-      elif settingsData[6+i][6:-1] == "Program":
-        self.builder.get_object("Button1 Zone" + str(i)).set_active(False)
-        self.builder.get_object("Button2 Zone" + str(i)).set_active(True)
-        self.builder.get_object("Button3 Zone" + str(i)).set_active(False)
-      else:
-        self.builder.get_object("Button1 Zone" + str(i)).set_active(False)
-        self.builder.get_object("Button2 Zone" + str(i)).set_active(False)
-        self.builder.get_object("Button3 Zone" + str(i)).set_active(True)
-      if int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1]) == 1:
-        self.builder.get_object("Home Text").set_text("— All systems OK, " + str(int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1])) + " sensor connected.")
-      else:
-        self.builder.get_object("Home Text").set_text("— All systems OK, " + str(int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1])) + " sensors connected.")
+        if settingsData[18+i][10:-1] == '=':
+          self.builder.get_object('Crop Name Zone' + str(i)).set_text("No plant/crop set")
+        else:
+          self.builder.get_object('Crop Name Zone' + str(i)).set_text("Plant/crop: " + settingsData[18+i][11:-1])
+
+        if settingsData[6+i][6:-1] == "Automatic":
+          self.builder.get_object("Button1 Zone" + str(i)).set_active(True)
+          self.builder.get_object("Button2 Zone" + str(i)).set_active(False)
+          self.builder.get_object("Button3 Zone" + str(i)).set_active(False)
+        elif settingsData[6+i][6:-1] == "Program":
+          self.builder.get_object("Button1 Zone" + str(i)).set_active(False)
+          self.builder.get_object("Button2 Zone" + str(i)).set_active(True)
+          self.builder.get_object("Button3 Zone" + str(i)).set_active(False)
+        else:
+          self.builder.get_object("Button1 Zone" + str(i)).set_active(False)
+          self.builder.get_object("Button2 Zone" + str(i)).set_active(False)
+          self.builder.get_object("Button3 Zone" + str(i)).set_active(True)
+        if int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1]) == 1:
+          self.builder.get_object("Home Text").set_text("— All systems OK, " + str(int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1])) + " sensor connected.")
+        else:
+          self.builder.get_object("Home Text").set_text("— All systems OK, " + str(int(liveData[12][9:-1]) + int(liveData[13][9:-1]) + int(liveData[14][9:-1]) + int(liveData[15][9:-1]) + int(liveData[16][9:-1]) + int(liveData[17][9:-1])) + " sensors connected.")
           
-      # Set zone status icons in the top-right corner - modular
-      if settingsData[6+i][6:-1] != "Automatic":
-        if liveData[-1+i][9:-1] == ", running":
-          self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
-          self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
-          self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
+        # Set zone status icons in the top-right corner - modular
+        if settingsData[6+i][6:-1] != "Automatic":
+          if liveData[-1+i][9:-1] == ", running":
+            self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
+            self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
+            self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " - Manual On.png")
+          elif i in criticalZones:
+            self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual Critical.png")
+            self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual Critical.png")
+            self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " - Manual Critical.png")
+          else:
+            self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual.png")
+            self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual.png")
+            self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " - Manual.png")
         else:
-          self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual.png")
-          self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " - Manual.png")
-          self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " - Manual.png")
-      else:
-        if liveData[-1+i][9:-1] == ", running":
-          self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " On.png")
-          self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " On.png")
-          self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " On.png")
-        else:
-          self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
-          self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
-          self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + ".png")
+          if liveData[-1+i][9:-1] == ", running":
+            self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " On.png")
+            self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + " On.png")
+            self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + " On.png")
+          else:
+            self.builder.get_object("Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
+            self.builder.get_object("Home Icon Zone" + str(i)).set_from_file("assets/Zone "  + str(i) + ".png")
+            self.builder.get_object("Zone"  + str(i) + " Status").set_from_file("assets/Zone "  + str(i) + ".png")
     
       i += 1
   
   def update_weather_page(self):
     # This function updates the weather information on the weather page and home page - modular
+    with open('/home/pi/HydroSoil/settings.txt') as file:
+      settingsData = file.readlines()
+    if settingsData[47][13:-1] == 'M':
+      unittemp = "C"
+      unitamount = "mm"
+      unitspeed = "km/h"
+    else:
+      unittemp = "F"
+      unitamount = "in"
+      unitspeed = "mph"
+    
     i = 1
     while i < 7: # Repeat 6 times
       if (i == 1):
         if forecastData[i-1][10] == 900:
           self.builder.get_object("Overview Day" + str(i)).set_text("Today - Rain")
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°" + unittemp)
         elif forecastData[i-1][10] < 300:
           self.builder.get_object("Overview Day" + str(i)).set_text("Today - Thunderstorm")
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°" + unittemp)
         else:
           self.builder.get_object("Overview Day" + str(i)).set_text("Today - " + forecastData[i-1][9])
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Today - " + str(forecastData[i-1][1]) + "°" + unittemp)
       elif (i == 2):
         if forecastData[i-1][10] == 900:
           self.builder.get_object("Overview Day" + str(i)).set_text("Tomorrow - Rain")
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°" + unittemp)
         elif forecastData[i-1][10] < 300:
           self.builder.get_object("Overview Day" + str(i)).set_text("Tomorrow - Thunderstorm")
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°" + unittemp)
         else:
           self.builder.get_object("Overview Day" + str(i)).set_text("Tomorrow - " + forecastData[i-1][9])
-          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text("Tomorrow - " + str(forecastData[i-1][1]) + "°" + unittemp)
       else:
         if forecastData[i-1][10] == 900:
           self.builder.get_object("Overview Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - Rain")
-          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°" + unittemp)
         elif forecastData[i-1][10] < 300:
           self.builder.get_object("Overview Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - Thunderstorm")
-          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°" + unittemp)
         else:
           self.builder.get_object("Overview Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + forecastData[i-1][9])
-          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°C")
-      self.builder.get_object("Max Day" + str(i)).set_text(str(forecastData[i-1][1]) + "°C")
-      self.builder.get_object("Min Day" + str(i)).set_text("Minimum " + str(forecastData[i-1][2]) + "°C")
+          self.builder.get_object("Home2 Day" + str(i)).set_text(forecastData[i-1][0].strftime('%A') + " - " + str(forecastData[i-1][1]) + "°" + unittemp)
+      self.builder.get_object("Max Day" + str(i)).set_text(str(forecastData[i-1][1]) + "°" + unittemp)
+      self.builder.get_object("Min Day" + str(i)).set_text("Minimum " + str(forecastData[i-1][2]) + "°" + unittemp)
       self.builder.get_object("Humidity Day" + str(i)).set_text("Humidity - " + str(forecastData[i-1][3]) + "%")
-      self.builder.get_object("Rain Day" + str(i)).set_text("Rain - " + str(forecastData[i-1][4]) + "mm (" + str(forecastData[i-1][5]) + "% chance)")
-      self.builder.get_object("Wind Day" + str(i)).set_text("Wind - " + str(forecastData[i-1][6]) + "km/h (" + forecastData[i-1][7] + ")")
+      self.builder.get_object("Rain Day" + str(i)).set_text("Rain - " + str(forecastData[i-1][4]) + unitamount + " (" + str(forecastData[i-1][5]) + "% chance)")
+      self.builder.get_object("Wind Day" + str(i)).set_text("Wind - " + str(forecastData[i-1][6]) + unitspeed + " (" + forecastData[i-1][7] + ")")
       self.builder.get_object("UV Day" + str(i)).set_text("UV Index - " + str(forecastData[i-1][8]))
-      self.builder.get_object("Home3 Day" + str(i)).set_text(str(forecastData[i-1][4]) + "mm rain (" + str(forecastData[i-1][5]) + "% chance)")
+      self.builder.get_object("Home3 Day" + str(i)).set_text(str(forecastData[i-1][4]) + unitamount + " rain (" + str(forecastData[i-1][5]) + "% chance)")
       self.builder.get_object("Home4 Day" + str(i)).set_text(str(forecastData[i-1][3]) + "% Humidity")
       
       e = 1
@@ -1257,7 +2129,7 @@ calweekstart=
       i += 1
 
   def __init__(self):
-    global dateToday
+    global dateToday, secondroutine, weatherroutine
     # This is the first function called, when the code is started
     # Set the Glade GUI file being used
     self.gladefile = "HydroSoil.glade"
@@ -1293,12 +2165,49 @@ calweekstart=
     if startupMode == 3:
       # SET UP THE HYDROCORE
       self.builder.get_object("Toplevel").set_current_page(1)
+      self.wifiGuiSetup = []
+      self.unitGuiSetup = []
+      self.curNewZone = -1
+      self.newZoneNoSetup = -1
+      
+      # Add WiFi Networks Tree View
+      columns = ["SSID",
+                 "Encryption",
+                 "Signal"]
+      self.wifi_list_setup = Gtk.ListStore(str, str, str)
+      self.wifi_list_setup.set_sort_column_id(2, Gtk.SortType.ASCENDING)
+      self.builder.get_object('WiFi Status Setup').set_xalign(0)
+      # Add found networks to list on GUI
+      wifiTreeList = self.builder.get_object('WiFi Tree Setup')
+      wifiTreeList.set_model(self.wifi_list_setup)
+      for i, column in enumerate(columns):
+        cell = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn(column, cell, text=i)
+        wifiTreeList.append_column(col)
+      
+      # Add detected HydroUnit's Icon View
+      self.unit_list_setup = Gtk.ListStore(Pixbuf, str, str)
+      unitIconView = self.builder.get_object('HydroUnit Icon View Setup')
+      unitIconView.set_item_width(108)
+      unitIconView.set_model(self.unit_list_setup)
+      unitIconView.set_pixbuf_column(0)
+      unitIconView.set_text_column(1)
+      # Create zones list for add new zone/sensor dialog
+      columns = ["Zone"]
+      self.zones_list_setup = Gtk.ListStore(str, int)
+      zonesTreeList = self.builder.get_object('Zone Selector Tree Setup')
+      zonesTreeList.set_model(self.zones_list_setup)
+      for i, column in enumerate(columns):
+        cell = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn(column, cell, text=i)
+        zonesTreeList.append_column(col)
+      
       print("Setting up HydroCore")
       return
     elif startupMode == 2:
       # SHOW FEATURES OF NEW UPDATE
       self.builder.get_object("Toplevel").set_current_page(2)
-      self.builder.get_object('New Features Title').set_text("What's New: hydrOS v" + updateData[0][:-1])
+      self.builder.get_object('New Features Title').set_text("What's New: hydrOS " + updateData[0][:-1])
       self.builder.get_object('New Features Text').set_text(''.join(map(str, updateData[1:])))
       print("Showing new update features")
     else:
@@ -1309,6 +2218,10 @@ calweekstart=
     self.builder.get_object("Content Tabs").set_current_page(0)
     self.builder.get_object("Home Icon").set_from_file("assets/Home Sel.png")
     # Configure some more properties of the GUI than cannot be set in Glade
+    with open('/home/pi/HydroSoil/version') as file:
+      currentVersion = file.readlines()
+    currentVersion = currentVersion[0]
+    self.builder.get_object('Title').set_subtitle('HydroSoil ' + currentVersion)
     self.builder.get_object("Main Calendar").set_detail_func(self.calendarDetail)
     self.builder.get_object("Main Calendar").set_detail_height_rows(2)
     self.builder.get_object("Humidity Day1").set_xalign(1)
@@ -1347,6 +2260,12 @@ calweekstart=
     self.builder.get_object("Setting Label 9").set_xalign(0)
     self.builder.get_object("Setting Label 10").set_xalign(0)
     self.builder.get_object("Status Text Update").set_xalign(1)
+    self.builder.get_object("Location Status").set_xalign(0)
+    self.builder.get_object("Sync Title").set_xalign(0)
+    self.builder.get_object("Last Sync Text").set_xalign(0)
+    self.builder.get_object("Country Code Text").set_xalign(0)
+    self.builder.get_object("TZ Text").set_xalign(0)
+    self.builder.get_object("Timezone Status").set_xalign(0)
     self.builder.get_object("Button1 Zone1").set_name("1")
     self.builder.get_object("Button2 Zone1").set_name("1")
     self.builder.get_object("Button3 Zone1").set_name("1")
@@ -1365,29 +2284,123 @@ calweekstart=
     self.builder.get_object("Button1 Zone6").set_name("6")
     self.builder.get_object("Button2 Zone6").set_name("6")
     self.builder.get_object("Button3 Zone6").set_name("6")
+    self.builder.get_object('HydroUnit Icon View').set_item_width(108)
+    self.builder.get_object('Settings Stack').connect("notify::visible-child", self.on_setting)
+    self.curNotificationType = 0
+    self.curNewZone = -1
+    self.newZoneNo = -1
+    self.wifiGuiList = []
+    self.unitGuiList = []
     # Parse crop/plant list & soil data for choose plant GUI
-    plant_list = self.builder.get_object('Crops & Plants')
+    columns = ["Name",
+               "Ideal Soil Type",
+               "Irrigate Level",
+               "Critical Level",
+               "pH Range"]
+    self.crop_list = Gtk.ListStore(str, str, str, str, str)
+    self.crop_list.set_sort_column_id(0, Gtk.SortType.ASCENDING)
     with open("plant-crop-list.csv", newline='') as csvfile:
       csvparser = csv.reader(csvfile, delimiter=',')
       Tup1 = ()
       i = 0
       for Tup1 in csvparser:
-        plant_list.insert(-1, [str(Tup1[0])])
+        self.crop_list.insert(-1, [str(Tup1[0]), str(Tup1[1]), str(Tup1[2]), str(Tup1[3]), str(Tup1[5] + " - " + Tup1[4])])
         i += 1
       csvfile.closed
-    # Add values to dropdown selection box (GtkComboBox)
-    plantCropCombo = self.builder.get_object('PlantCropDropdown')
-    renderer_combo = Gtk.CellRendererText()
-    plantCropCombo.pack_start(renderer_combo, True)
-    plantCropCombo.add_attribute(renderer_combo, "text", 0)
+    # Add plant/crop list to GUI treeview
+    plantCropTree = self.builder.get_object('Plant/Crop Tree')
+    plantCropTree.set_model(self.crop_list)
+    for i, column in enumerate(columns):
+      cell = Gtk.CellRendererText()
+      col = Gtk.TreeViewColumn(column, cell, text=i)
+      plantCropTree.append_column(col)
+    # Add values to country code completion model
+    country_list = Gtk.ListStore(str)
+    with open("country-codes.csv", newline='') as csvfile:
+      csvparser = csv.reader(csvfile, delimiter=',')
+      Tup1 = ()
+      i = 0
+      for Tup1 in csvparser:
+        country_list.insert(-1, [str(Tup1[1])])
+        i += 1
+      csvfile.closed
+    self.builder.get_object('Country Codes Completion').set_model(country_list)
+    self.builder.get_object('Country Codes Completion 2').set_model(country_list)
+    self.builder.get_object('Country Codes Completion 3').set_model(country_list)
+    self.builder.get_object('Country Codes Completion').set_text_column(0)
+    self.builder.get_object('Country Codes Completion 2').set_text_column(0)
+    self.builder.get_object('Country Codes Completion 3').set_text_column(0)
+    self.builder.get_object('Country Box 1').set_completion(self.builder.get_object('Country Codes Completion'))
+    self.builder.get_object('Country Box 2').set_completion(self.builder.get_object('Country Codes Completion 2'))
+    self.builder.get_object('TZ Country Box').set_completion(self.builder.get_object('Country Codes Completion 3'))
+    # Add WiFi Networks Tree View
+    columns = ["SSID",
+               "Encryption",
+               "Signal"]
+    self.wifi_list = Gtk.ListStore(str, str, str)
+    self.wifi_list.set_sort_column_id(2, Gtk.SortType.ASCENDING)
+    # Add found networks to list on GUI
+    wifiTreeList = self.builder.get_object('WiFi Tree')
+    wifiTreeList.set_model(self.wifi_list)
+    for i, column in enumerate(columns):
+      cell = Gtk.CellRendererText()
+      col = Gtk.TreeViewColumn(column, cell, text=i)
+      wifiTreeList.append_column(col)
+    # Add Timezones Tree View
+    columns = ["Name",
+               "UTC Offset"]
+    self.timezone_list = Gtk.ListStore(str, str, int, str)
+    self.timezone_list.set_sort_column_id(2, Gtk.SortType.ASCENDING)
+    tzTreeList = self.builder.get_object('Timezone Tree')
+    tzTreeList.set_model(self.timezone_list)
+    for i, column in enumerate(columns):
+      cell = Gtk.CellRendererText()
+      col = Gtk.TreeViewColumn(column, cell, text=i)
+      tzTreeList.append_column(col)
+    # Add detected HydroUnit's Icon View
+    self.unit_list = Gtk.ListStore(Pixbuf, str, str)
+    unitIconView = self.builder.get_object('HydroUnit Icon View')
+    unitIconView.set_model(self.unit_list)
+    unitIconView.set_pixbuf_column(0)
+    unitIconView.set_text_column(1)
+    # Create zones list for add new zone/sensor dialog
+    columns = ["Zone"]
+    self.zones_list = Gtk.ListStore(str, int)
+    zonesTreeList = self.builder.get_object('Zone Selector Tree')
+    zonesTreeList.set_model(self.zones_list)
+    for i, column in enumerate(columns):
+      cell = Gtk.CellRendererText()
+      col = Gtk.TreeViewColumn(column, cell, text=i)
+      zonesTreeList.append_column(col)
+    # Create sensors list for zone config settings page
+    columns = ["Sensor"]
+    self.sensor_list = Gtk.ListStore(str, int)
+    sensorTreeList = self.builder.get_object('Sensor Tree')
+    sensorTreeList.set_model(self.sensor_list)
+    for i, column in enumerate(columns):
+      cell = Gtk.CellRendererText()
+      col = Gtk.TreeViewColumn(column, cell, text=i)
+      sensorTreeList.append_column(col)
+    self.sensor_list.append(["SB38291", 0])
+    self.sensor_list.append(["SB12345", 0])
+    self.sensor_list.append(["SB98765", 0])
+    self.sensor_list.append(["SB02341", 0])
+    self.sensor_list.append(["SB76543", 0])
+    self.sensor_list.append(["", 0])
+    # Add web viewer to view the manual
+    self.pdf_webview = WebKit.WebView()
+    self.pdf_webview.load_uri("https://drive.google.com/file/d/1WMSNZ4hPvCu8v6eo1GiDpqcuj99umLMK/preview")
+    self.builder.get_object('Setting Child 10').add(self.pdf_webview)
+    self.pdf_webview.show()
     # Update the zones page (disable controls for disabled modes)
     self.update_zone_controls()
     # Set timed interupts for clock & wifi status
-    self.secondroutine = GLib.timeout_add(1000, self.second_routine) # 1 second
-    self.weatherroutine = GLib.timeout_add(1800000, self.forecast) # 30 minutes
+    secondroutine = GLib.timeout_add(1000, self.second_routine) # 1 second
+    weatherroutine = GLib.timeout_add(1800000, self.forecast) # 30 minutes
     self.forecast()
     self.update_weather_page()
     self.update_zones()
+    self.update_enabled_zones()
     # Select today on the calendar, and mark it for the user
     dateToday = datetime.date.today()
     self.builder.get_object('Main Calendar').select_month(dateToday.month-1, dateToday.year)
@@ -1399,5 +2412,5 @@ calweekstart=
     self.builder.get_object('Home Cal Text').set_text(self.generate_calendar_text(dateToday.year, dateToday.month-1, dateToday.day, False))
 
 if __name__ == "__main__":
-  main = SoilSystemMain()
+  main = HydroSoilMain()
   Gtk.main()
