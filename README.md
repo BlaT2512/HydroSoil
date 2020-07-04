@@ -1,9 +1,9 @@
 # HydroSoil hydrOS Operating System
-[![GitHub release](https://img.shields.io/github/release/BlaT2512/hydrOS.svg)](https://gitHub.com/BlaT2512/hydrOS/releases/)
-[![GitHub license](https://img.shields.io/github/license/BlaT2512/hydrOS.svg)](https://github.com/BlaT2512/hydrOS/blob/master/LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/BlaT2512/hydrOS.svg)](https://gitHub.com/BlaT2512/hydrOS/issues/)
-[![Build Status](https://travis-ci.com/BlaT2512/hydrOS.svg?branch=master)](https://travis-ci.com/BlaT2512/hydrOS)
-[![GitHub stars](https://img.shields.io/github/stars/BlaT2512/hydrOS.svg?style=social&label=Star&maxAge=2592000)](https://gitHub.com/BlaT2512/hydrOS/stargazers/)
+[![GitHub release](https://img.shields.io/github/release/BlaT2512/HydroSoil.svg)](https://gitHub.com/BlaT2512/HydroSoil/releases/)
+[![GitHub license](https://img.shields.io/github/license/BlaT2512/HydroSoil.svg)](https://github.com/BlaT2512/HydroSoil/blob/master/LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/BlaT2512/HydroSoil.svg)](https://gitHub.com/BlaT2512/HydroSoil/issues/)
+[![Build Status](https://travis-ci.com/BlaT2512/HydroSoil.svg?branch=master)](https://travis-ci.com/BlaT2512/HydroSoil)
+[![GitHub stars](https://img.shields.io/github/stars/BlaT2512/HydroSoil.svg?style=social&label=Star&maxAge=2592000)](https://gitHub.com/BlaT2512/HydroSoil/stargazers/)
 
 ![HydroSoil Logo](extras/Icon-256.png)
 ![hydrOS Logo](extras/hydrOS.png)
