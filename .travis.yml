@@ -19,5 +19,5 @@ install:
 # command to run tests
 script:
   - python3 HydroSoil/main.py
-  - python3 HydroSoil/mqtt.py
   - python3 HydroLauncher/launcher.py
+# Note: MQTT file is not tested as it opens a MQTT server which can't be tested in Travis CI
