@@ -15,7 +15,6 @@ install:
   - sudo mkdir /home/pi
   - cd /home/pi
   - sudo git clone --depth=50 --branch=master https://github.com/BlaT2512/HydroSoil.git /home/pi
-  - cd HydroSoil
   - sudo git checkout -qf $TRAVIS_COMMIT
 # command to run tests
 script:
