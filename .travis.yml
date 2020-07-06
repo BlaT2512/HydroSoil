@@ -12,6 +12,7 @@ before_install:
 # command to install dependencies
 install:
   - pip install -r requirements.txt
+  - cd ../..
   - git clone --depth=50 --branch=master https://github.com/BlaT2512/HydroSoil.git HydroSoil
   - cd HydroSoil
   - git checkout -qf $TRAVIS_COMMIT
