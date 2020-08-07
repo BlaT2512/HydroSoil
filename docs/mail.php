@@ -1,11 +1,9 @@
 <?php
-    $to = 'demo@spondonit.com';
+    $to = 'info.hydrosoil@gmail.com';
     $firstname = $_POST["fname"];
     $email= $_POST["email"];
     $text= $_POST["message"];
     $phone= $_POST["phone"];
-    
-
 
     $headers = 'MIME-Version: 1.0' . "\r\n";
     $headers .= "From: " . $email . "\r\n"; // Sender's E-mail
