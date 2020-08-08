@@ -54,7 +54,8 @@ You can then exit out of Nano and save the file. In the Linux terminal, enter th
 
 When prompted for password, enter `HydroSoil123`
 
-Once this is set up, change the device's hostname to `soilsystemmainunit`
+Once this is set up, change the device's hostname to `hydrosoilmainunit`
+
 Reboot the device.
 
 # Changelog & planned upcoming changes
