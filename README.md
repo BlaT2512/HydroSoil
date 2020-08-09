@@ -8,7 +8,7 @@
 ![HydroSoil Logo](extras/Icon-256.png)
 ![hydrOS Logo](extras/hydrOS.png)
 
-Official Repository for the hydrOS, the operating system behind HydroSoil: Smart Irrigation Solutions.
+Official Repository for the hydrOS, the operating system behind HydroSoil: Smart Irrigation Solutions products.
 
 # FYI: hydrOS is still in beta and unsuitable for stable use. Ensure you back up your data or run this in a safe environment if testing.
 
@@ -58,7 +58,7 @@ Once this is set up, change the device's hostname to `hydrosoilmainunit`
 
 Reboot the device.
 
-# Changelog & planned upcoming changes
+# Changelog
 ### v0.2-beta [LATEST PRE-RELEASE]
 This second major pre-release of hydrOS brings huge performance & feature updates as well as bug fixes
 Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
@@ -103,3 +103,44 @@ Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit S
 - Multiple fatal errors occur when WiFi network is not connected
 - HydroUnit Standard blue zone indicator light does not currently work
 - Connection with the HydroSoil iOS app is not yet established
+
+# Planned upcoming changes
+### v0.3-beta
+hydrOS v0.3-beta is nearly ready for release and will be coming out in the next few weeks.
+This will most likely be the final beta before the first proper release, v1.0.0.
+Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
+#### New Features:
+ - WiFi Network List on settings page allowing you to see networks and connect
+ - Select weather location in settings page by postcode or city and country
+ - Add new zone or sensor in settings with IconView and ability to select zone
+ - Sync date and time with internet ability
+ - Timezone changing ability with list downloaded for specified country
+ - New fluent UI notifications dropdown - WiFi connection details, soil moisture level warning and new sensor detected
+ - New fluent UI dropdown power menu
+ - Refined initial setup process with ability to add new HydroUnits and connect to WiFi
+ - Reset to factory default settings page
+ - Zone and sensor configuration settings page allowing sensors to be reordered, deleted and renamed
+ - Calendar week start setting in settings general page ability
+ - Various big fixes
+ 
+ ### v1.0.0
+ This will be the first proper release of hydrOS and will have great stability and performance.
+ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++). HydroUnit Premium (C++) source code may also be released.
+ #### New Features:
+ - 2-Way Phone app connectivity through MQTT server
+ - Settings page in GUI listing connected devices and ability to revoke devices and authorise them
+ 
+ ### Other planned new features (could be added to v1.0.0 or future updates):
+ - Offline splash screen at startup (HydroLauncher) showing available networks with start to offline mode option at the bottom
+ - Offline mode with limited functionality and persistent notification asking to connect
+ - JSON settings and livedata with zones.json file including all zone data and settings.json file with everything else (replacing current text files)
+ - macOS theme for GUI application and support for other custom themes, and a light/dark mode
+ - New settings page allowing support for custom plant/crops and editing to the list, also ability to reset to default list and download latest list
+ - More new HydroLauncher features
+ - Support for user to view raw moisture percentage and pH values for zones
+ - System log in settings showing zone watering changes, programs running/stopping, wifi connectivity, tracebacks and much more
+ - Support for run-once program for a specific zone
+ - Support for a rain sensor to be connected so irrigation is stopped live when rain occurs and a rain delay setting
+ - New support for integrations with support for sending specific events to IFTTT (with key) and MQTT (with host name/ip, port, username and password)
+ - STDOUT and STDIN communication between 3 scripts instead of text files (HydroLauncher, hydrOS and MQTT scripts)
+ - Most likely various bug fixes
