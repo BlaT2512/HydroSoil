@@ -62,7 +62,7 @@ Reboot the device.
 ### v0.2-beta [LATEST PRE-RELEASE]
 This second major pre-release of hydrOS brings huge performance & feature updates as well as bug fixes
 Includes source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++)
-### New Features:
+#### New Features:
 - Settings WiFi list showing available networks and disconnect functionality
 - Settings page for changing weather location
 - Radio buttons for changing the weather units (metric or imperial)
@@ -129,7 +129,8 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
  #### New Features:
  - 2-Way Phone app connectivity through MQTT server
  - Settings page in GUI listing connected devices and ability to revoke devices and authorise them
- 
+ - Most likely various bug fixes
+  
  ### Other planned new features (could be added to v1.0.0 or future updates):
  - Offline splash screen at startup (HydroLauncher) showing available networks with start to offline mode option at the bottom
  - Offline mode with limited functionality and persistent notification asking to connect
@@ -143,4 +144,3 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
  - Support for a rain sensor to be connected so irrigation is stopped live when rain occurs and a rain delay setting
  - New support for integrations with support for sending specific events to IFTTT (with key) and MQTT (with host name/ip, port, username and password)
  - STDOUT and STDIN communication between 3 scripts instead of text files (HydroLauncher, hydrOS and MQTT scripts)
- - Most likely various bug fixes
