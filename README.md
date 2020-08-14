@@ -123,24 +123,29 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
  - Calendar week start setting in settings general page ability
  - Various big fixes
  
- ### v1.0.0
- This will be the first proper release of hydrOS and will have great stability and performance.
- Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++). HydroUnit Premium (C++) source code may also be released.
- #### New Features:
- - 2-Way Phone app connectivity through MQTT server
- - Settings page in GUI listing connected devices and ability to revoke devices and authorise them
- - Most likely various bug fixes
+### v1.0.0
+This will be the first proper release of hydrOS and will have great stability and performance.
+Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUnit Standard (C++). HydroUnit Premium (C++) source code may also be released.
+#### New Features:
+- 2-Way Phone app connectivity through MQTT server
+- Settings page in GUI listing connected devices and ability to revoke devices and authorise them
+- Most likely various bug fixes
   
- ### Other planned new features (could be added to v1.0.0 or future updates):
- - Offline splash screen at startup (HydroLauncher) showing available networks with start to offline mode option at the bottom
- - Offline mode with limited functionality and persistent notification asking to connect
- - JSON settings and livedata with zones.json file including all zone data and settings.json file with everything else (replacing current text files)
- - macOS theme for GUI application and support for other custom themes, and a light/dark mode
- - New settings page allowing support for custom plant/crops and editing to the list, also ability to reset to default list and download latest list
- - More new HydroLauncher features
- - Support for user to view raw moisture percentage and pH values for zones
- - System log in settings showing zone watering changes, programs running/stopping, wifi connectivity, tracebacks and much more
- - Support for run-once program for a specific zone
- - Support for a rain sensor to be connected so irrigation is stopped live when rain occurs and a rain delay setting
- - New support for integrations with support for sending specific events to IFTTT (with key) and MQTT (with host name/ip, port, username and password)
- - STDOUT and STDIN communication between 3 scripts instead of text files (HydroLauncher, hydrOS and MQTT scripts)
+### Overview of other planned new features (could be added to v1.0.0 or future updates):
+#### New Settings Pages
+- Personalisation - Change theme/accent colour and choose between light/dark mode
+- Plant/crop List - Edit the plant/crop list for zones and add your own entries, also download the latest list and reset to default
+- System Log - Shows all event that have occured including irrigation related and WiFi, MQTT, tracebacks and more
+- Rain Sensing - Enable rain sensor connection and set parameters such as what percent rain should trigger it and rain delay
+- Intergrations - Allows integration with user's IFTTT recipes and user's own MQTT server with a specific topic
+- Extensions - Allows extensions to be added to hydrOS which bring more functionality or features, and can be installed from a database or custom github URL
+
+#### Performance Updates
+- JSON Settings - Allows quicker and much easier writing and reading to settings files
+- STDOUT and STDIN communication - Allows much faster internal communication between the processes
+
+#### Other New Features
+- Offline Mode - Allows hydrOS to be used with limited functionality when WiFi is disconnected
+- Irrigation Zones - Irrigation Zones page now shows you the moisture percentage and pH level for each zone
+- Irrigation Zones - Run-once programs can now be created for zones to irrigate for a specific time just once
+- HydroLauncher - New and more working features are being added including debugging
