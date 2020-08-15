@@ -208,21 +208,57 @@ This file contains any settings that your script needs to function, e.g. the sen
 #### src/assets/ folder
 The `src/assets` folder can contain any extra assets that your script needs. It is not accessible by the user.
 
+#### An example code extension will soon be available here
+
 ### Personalisation extension folder/file structure
-Personalisation extensions add theme(s) to hydrOS.
+Personalisation extensions add theme(s) to hydrOS. Themes need to be GTK 3 themes, and have an assets folder for each of the available accent colours for hydrOS. There are 8 colours which are blue, purple, pink, red, orange, yellow, green and grey. You should also have a `gtk.css` and `gtk-dark.css` (if you have a dark theme) for each colour, named `gtk-blue.css`, `gtk-dark-blue.css` (if applicable) and so on.
+
+The hex colour codes for each colour are:
+```
+BLUE     #0A73FF
+PURPLE   #933396
+PINK     #F4419E
+RED      #DE2C3F
+ORANGE   #F5801E
+YELLOW   #FBB929
+GREEN    #66BE46
+GREY     #989898
+```
 
 Extensions will have their own folder in the [hydrOS Root]\extensions directory, with the following structure:
 ```
 ExampleExtension/
 ExampleExtension/extension.json
 ExampleExtension/theme/
-ExampleExtension/theme/index.theme
 ExampleExtension/theme/themeName/
-ExampleExtension/theme/themeName/gtk.css
-ExampleExtension/theme/themeName/gtk-dark.css*
-ExampleExtension/theme/themeName/settings.ini
-ExampleExtension/theme/themeName/thumbnail.png
-ExampleExtension/theme/themeName/assets/
+ExampleExtension/theme/themeName/index.theme
+ExampleExtension/theme/themeName/gtk-3.0/
+ExampleExtension/theme/themeName/gtk-3.0/settings.ini
+ExampleExtension/theme/themeName/gtk-3.0/thumbnail.png
+ExampleExtension/theme/themeName/gtk-3.0/gtk-blue.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-purple.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-pink.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-red.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-orange.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-yellow.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-green.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-grey.css
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-blue.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-purple.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-pink.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-red.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-orange.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-yellow.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-green.css*
+ExampleExtension/theme/themeName/gtk-3.0/gtk-dark-grey.css*
+ExampleExtension/theme/themeName/gtk-3.0/assets-blue/
+ExampleExtension/theme/themeName/gtk-3.0/assets-purple/
+ExampleExtension/theme/themeName/gtk-3.0/assets-pink/
+ExampleExtension/theme/themeName/gtk-3.0/assets-red/
+ExampleExtension/theme/themeName/gtk-3.0/assets-orange/
+ExampleExtension/theme/themeName/gtk-3.0/assets-yellow/
+ExampleExtension/theme/themeName/gtk-3.0/assets-green/
+ExampleExtension/theme/themeName/gtk-3.0/assets-grey/
 ```
 File/folder names with an asterix at the end are not compulsory to the folder structure.
 
@@ -230,25 +266,30 @@ File/folder names with an asterix at the end are not compulsory to the folder st
 The `extension.json` file contains information about the extension and what it does. Details of how to structure this file will be added soon.
 
 #### theme/ folder
-The theme folder contains the actual GTK theme
-
-#### theme/index.theme
-This is a standard GTK theme file which contains information about the theme. It is not used by hydrOS but by the internal system when loading the theme.
+The theme folder contains the GTK themes that this extension adds to hydrOS
 
 #### theme/themeName/ folder
 This folder contains a GTK 3 theme. The theme must be a GTK 3 theme as this is what hydrOS is based on. You can have multiple themes which are installed with your extension, for this you should have a folder like this in the `theme` folder for each one.
 
-#### theme/themeName/gtk.css
-`gtk.css` is the main theme file which contains the actual theme data and how to display the theme for the system, such as which files are used in the assets folder.
+#### theme/themeName/index.theme
+This is a standard GTK theme file which contains information about the theme. It is not used by hydrOS but by the internal system when loading the theme.
 
-#### theme/themeName/gtk-dark.css
-`gtk-dark.css` is very similar to `gtk.css` but is the information for the dark version of your theme, if it has one.
+#### theme/themeName/gtk-3.0/ folder
+This folder contains the GTK 3 theme data: CSS files and assets.
 
-#### theme/themeName/settings.ini
+#### theme/themeName/gtk-3.0/settings.ini
 `settings.ini` is a standard theme file which contains information about the theme settings.
 
-#### theme/themeName/thumbnail.png
+#### theme/themeName/gtk-3.0/thumbnail.png
 This image is a thumbnail image of the theme.
 
-#### theme/themeName/assets/ folder
-This folder contains the image assets for your theme, generally in PNG or SVG format. The assets are used by `gtk.css` and `gtk.dark.css` if your theme has a dark mode.
+#### theme/themeName/gtk-3.0/gtk-[COLOUR].css
+Each `gtk-[COLOUR].css` file contains the main theme data and how to display the theme for the system, such as which files are used in the assets folder. All these files should be the same except for the colour used. The hex colour for each accent colour is shown above, so you need to replace the hex colour for highlight etc. in each file. This can be done with a simple find and replace for the hex value. The other change that needs to be done is the reference to the assets folder. The `gtk-blue.css` file should get it's images from the `assets-blue/` folder and so on. This can also be done with a find/replace.
+
+#### theme/themeName/gtk-3.0/gtk-dark-[COLOUR].css
+`gtk-dark.css` is very similar to `gtk.css` but is the information for the dark version of your theme, if it has one. Again you should replace the hex value and reference to assets folder in each one.
+
+#### theme/themeName/gtk-3.0/assets-[COLOUR]/ folders
+These folders contains the image assets for your theme, generally in PNG or SVG format. Each folder is virtually the same apart from the colour which each applicable file is. The assets are used by the corresponding `gtk-[COLOUR].css` and `gtk-dark-[COLOUR].css` if your theme has a dark mode.
+
+#### An example personalisation extension will soon be available here
