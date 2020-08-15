@@ -144,8 +144,64 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
 - JSON Settings - Allows quicker and much easier writing and reading to settings files
 - STDOUT and STDIN communication - Allows much faster internal communication between the processes
 
+#### Extensions
+- A hydrOS Extension Market will be released allowing developer's custom extensions to be easily found (hosted on Github)
+- Extension protocol allows developers to make their own extensions and add them to market or give custom link to user's
+- One-time codes can be given to user's who have purchased a product so that only they have access to the extension
+- A custom verification process can be made to run when extension is installed (e.g. check verification code) or on every startup (e.g. check if verification code is still valid or being used elsewhere)
+##### A draft of the extension protocol can be found below
+
 #### Other New Features
 - Offline Mode - Allows hydrOS to be used with limited functionality when WiFi is disconnected
 - Irrigation Zones - Irrigation Zones page now shows you the moisture percentage and pH level for each zone
 - Irrigation Zones - Run-once programs can now be created for zones to irrigate for a specific time just once
 - HydroLauncher - New and more working features are being added including debugging
+
+# Extensions
+## What are hydrOS Extensions?
+hydrOS Extensions allow developers to write their own code snippets to add functionality to the HydroSoil system, e.g. an extension allowing connectivity to a custom sensor or integration with a product. There are many different triggers or ways your code can run, e.g. run a function every second, when a certain condition is met, at a certain time etc. Note that extensions can not currently add to the GUI, apart from having their own settings page. This may be allowed in the future.
+
+## How are extensions installed?
+Extensions can be installed in hydrOS via Settings > Extensions. There are 2 ways an extensions can be installed, although for both methods the extension must be hosted as a GitHub repo. It can either be installed from the extension marketplace or via a custom URL to the code in a GitHub repo. The extensions marketplace allows developers to have their extension easily found and displayed in the hydrOS extension list. You can get your extension added by following the extension marketplace addition process, detailed below. You can also get your extension installed via direct link to your GitHub repo.
+
+## How do I get my extension added to the marketplace?
+To get your extension added to the marketplace, you will need to open an issue on this GitHub repository. When asked what issue type to create, select the extension marketplace addition template.
+
+## Extension Protocol [DRAFT]
+The protocol guide below will help you develop a hydrOS extension. Functionality is not yet available in hydrOS, it will be coming in a future update with the beta coming out soon.
+
+### Folder/file structure
+Extensions will have their own folder in the [hydrOS Root]\extensions directory, with the following structure:
+```
+ExampleExtension/
+ExampleExtension/extension.json
+ExampleExtension/settingsGUI.json
+ExampleExtension/src/
+ExampleExtension/src/main.py
+ExampleExtension/src/mqtt.py*
+ExampleExtension/src/launcher.py*
+ExampleExtension/src/settings.json*
+ExampleExtension/src/assets/*
+```
+File/folder names with an asterix at the end are not compulsory to the folder structure.
+
+#### extension.json
+The `extension.json` file contains information about the extension and what it does. Details of how to structure this file will be added soon.
+
+#### settingsGUI.json
+The `settingsGUI.json` file contains the data for what settings there are for this extension, e.g. a dropdown box for the user to select the sensor model. It can be blank if there are no settings but must exist. The user will be able to access the settings page for your extension built from this file via Settings > Extensions > [Extension Name]. Details of how to structure this file will be added soon.
+
+#### src/main.py
+This file contains the main code for your extension which will be run by main.py. Details of how to structure this file and it's class will be added soon.
+
+#### src/mqtt.py
+This file contains any code which you would like to add functionality to the MQTT server, e.g. recieving messages from a certain topic for your custom sensor. Details of how to structure this file and it's class will be added soon.
+
+#### src/launcher.py
+This file contains any code which you would like to add functionality to the HydroLauncher, e.g. an extra button to the HydroLauncher menu or task to run on startup before the launch of GUI and/or MQTT server. Details of how to structure this file and it's class will be added soon.
+
+#### src/settings.json
+This file contains any settings that your script needs to function, e.g. the sensor model and ID. It can be written to and accessed by your extension's GUI settings page (defined by `settingsGUI.json`).
+
+#### src/assets/ folder
+The `src/assets` folder can contain any extra assets that your script needs. It is not accessible by the user.
