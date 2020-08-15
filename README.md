@@ -159,7 +159,7 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
 
 # Extensions
 ## What are hydrOS Extensions?
-hydrOS Extensions allow developers to write their own code snippets to add functionality to the HydroSoil system, e.g. an extension allowing connectivity to a custom sensor or integration with a product. There are many different triggers or ways your code can run, e.g. run a function every second, when a certain condition is met, at a certain time etc. Note that extensions can not currently add to the GUI, apart from having their own settings page. This may be allowed in the future.
+hydrOS Extensions allow developers to write their own code snippets to add functionality to the HydroSoil system, e.g. an extension allowing connectivity to a custom sensor or integration with a product. There are many different triggers or ways your code can run, e.g. run a function every second, when a certain condition is met, at a certain time etc. An extension can also simply add a theme to hydrOS and contain no code. This is a personalisation theme. Note that extensions can not currently add to the GUI, apart from having their own settings page. This may be allowed in the future.
 
 ## How are extensions installed?
 Extensions can be installed in hydrOS via Settings > Extensions. There are 2 ways an extensions can be installed, although for both methods the extension must be hosted as a GitHub repo. It can either be installed from the extension marketplace or via a custom URL to the code in a GitHub repo. The extensions marketplace allows developers to have their extension easily found and displayed in the hydrOS extension list. You can get your extension added by following the extension marketplace addition process, detailed below. You can also get your extension installed via direct link to your GitHub repo.
@@ -170,7 +170,9 @@ To get your extension added to the marketplace, you will need to open an issue o
 ## Extension Protocol [DRAFT]
 The protocol guide below will help you develop a hydrOS extension. Functionality is not yet available in hydrOS, it will be coming in a future update with the beta coming out soon.
 
-### Folder/file structure
+### Code extension folder/file structure
+Code extensions add functionality to hydrOS.
+
 Extensions will have their own folder in the [hydrOS Root]\extensions directory, with the following structure:
 ```
 ExampleExtension/
@@ -205,3 +207,48 @@ This file contains any settings that your script needs to function, e.g. the sen
 
 #### src/assets/ folder
 The `src/assets` folder can contain any extra assets that your script needs. It is not accessible by the user.
+
+### Personalisation extension folder/file structure
+Personalisation extensions add theme(s) to hydrOS.
+
+Extensions will have their own folder in the [hydrOS Root]\extensions directory, with the following structure:
+```
+ExampleExtension/
+ExampleExtension/extension.json
+ExampleExtension/theme/
+ExampleExtension/theme/index.theme
+ExampleExtension/theme/themeName/
+ExampleExtension/theme/themeName/gtk.css
+ExampleExtension/theme/themeName/gtk-dark.css*
+ExampleExtension/theme/themeName/settings.ini
+ExampleExtension/theme/themeName/thumbnail.png
+ExampleExtension/theme/themeName/assets/
+```
+File/folder names with an asterix at the end are not compulsory to the folder structure.
+
+#### extension.json
+The `extension.json` file contains information about the extension and what it does. Details of how to structure this file will be added soon.
+
+#### theme/ folder
+The theme folder contains the actual GTK theme
+
+#### theme/index.theme
+This is a standard GTK theme file which contains information about the theme. It is not used by hydrOS but by the internal system when loading the theme.
+
+#### theme/themeName/ folder
+This folder contains a GTK 3 theme. The theme must be a GTK 3 theme as this is what hydrOS is based on. You can have multiple themes which are installed with your extension, for this you should have a folder like this in the `theme` folder for each one.
+
+#### theme/themeName/gtk.css
+`gtk.css` is the main theme file which contains the actual theme data and how to display the theme for the system, such as which files are used in the assets folder.
+
+#### theme/themeName/gtk-dark.css
+`gtk-dark.css` is very similar to `gtk.css` but is the information for the dark version of your theme, if it has one.
+
+#### theme/themeName/settings.ini
+`settings.ini` is a standard theme file which contains information about the theme settings.
+
+#### theme/themeName/thumbnail.png
+This image is a thumbnail image of the theme.
+
+#### theme/themeName/assets/ folder
+This folder contains the image assets for your theme, generally in PNG or SVG format. The assets are used by `gtk.css` and `gtk.dark.css` if your theme has a dark mode.
