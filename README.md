@@ -137,7 +137,7 @@ Will include source code for hydrOS (Python), HydroLauncher (Python) and HydroUn
 - Plant/crop List - Edit the plant/crop list for zones and add your own entries, also download the latest list and reset to default
 - System Log - Shows all event that have occured including irrigation related and WiFi, MQTT, tracebacks and more
 - Rain Sensing - Enable rain sensor connection and set parameters such as what percent rain should trigger it and rain delay
-- Intergrations - Allows integration with user's IFTTT recipes and user's own MQTT server with a specific topic
+- Intergration - Allows integration with user's IFTTT recipes and user's own MQTT server with a specific topic
 - Extensions - Allows extensions to be added to hydrOS which bring more functionality or features, and can be installed from a database or custom github URL
 
 #### Performance Updates
